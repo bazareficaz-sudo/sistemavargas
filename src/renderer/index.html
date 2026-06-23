@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https:;">
+<title>PDV Vargas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles/global.css">
+</head>
+<body>
+<div id="app">
+  <!-- Titlebar customizado -->
+  <div class="titlebar">
+    <div class="titlebar-left">
+      <img src="assets/logo-icon.svg" class="app-logo-img" alt="Sistema Vargas">
+      <span class="app-name">PDV Vargas</span>
+      <span id="titlebar-empresa" style="font-size:11px;color:var(--text3);padding-left:6px;border-left:1px solid var(--border2);margin-left:2px"></span>
+      <div class="sync-indicator" id="sync-indicator">
+        <span class="sync-dot offline" id="sync-dot"></span>
+        <span id="sync-label">Offline</span>
+      </div>
+    </div>
+    <div class="titlebar-center" id="titlebar-page"></div>
+    <div class="titlebar-right">
+      <div class="pending-badge" id="pending-badge" style="display:none">
+        <span id="pending-count">0</span> pendentes
+      </div>
+      <button class="tb-btn" onclick="window.pdv.app.minimize()">─</button>
+      <button class="tb-btn" onclick="window.pdv.app.maximize()">□</button>
+      <button class="tb-btn close" onclick="window.pdv.app.close()">✕</button>
+    </div>
+  </div>
+
+  <!-- Layout principal -->
+  <div class="layout" id="main-layout" style="display:none">
+    <!-- Sidebar -->
+    <nav class="sidebar" id="sidebar">
+      <div style="padding:10px 14px 8px;border-bottom:1px solid var(--border)">
+        <img src="assets/logo.svg" alt="Sistema Vargas" style="width:100%;max-width:160px;height:auto;display:block;opacity:.92">
+      </div>
+      <div class="nav-user" id="nav-user"></div>
+      <div class="nav-links">
+        <button class="nav-btn active" data-page="pdv" onclick="App.navigate('pdv')">
+          <span class="nav-icon">🛒</span><span>PDV</span>
+        </button>
+        <button class="nav-btn" data-page="clientes" onclick="App.navigate('clientes')">
+          <span class="nav-icon">👤</span><span>Clientes</span>
+        </button>
+        <button class="nav-btn" data-page="produtos" onclick="App.navigate('produtos')">
+          <span class="nav-icon">📦</span><span>Produtos</span>
+        </button>
+        <button class="nav-btn" data-page="vendas" onclick="App.navigate('vendas')">
+          <span class="nav-icon">🧾</span><span>Vendas</span>
+        </button>
+        <button class="nav-btn" data-page="faltas" onclick="App.navigate('faltas')" style="position:relative">
+          <span class="nav-icon">📋</span><span>Faltas</span>
+          <span id="faltas-badge" style="display:none;background:var(--red);color:#fff;
+            border-radius:10px;font-size:9px;padding:1px 6px;margin-left:auto;line-height:16px"></span>
+        </button>
+        <button class="nav-btn" data-page="config" onclick="App.navigate('config')">
+          <span class="nav-icon">⚙️</span><span>Config</span>
+        </button>
+      </div>
+      <div class="nav-sync">
+        <button class="sync-btn" onclick="App.syncNow()" id="sync-btn">
+          <span id="sync-icon">↻</span> Sincronizar
+        </button>
+        <div class="sync-time" id="sync-time">Nunca sincronizado</div>
+      </div>
+    </nav>
+
+    <!-- Área de conteúdo -->
+    <main class="main-content" id="main-content"></main>
+  </div>
+
+  <!-- Tela de login -->
+  <div id="login-screen"></div>
+
+  <!-- Toast container -->
+  <div id="toasts"></div>
+
+  <!-- Modal overlay -->
+  <div id="modal-overlay" onclick="Modal.closeOnBackdrop(event)">
+    <div id="modal-container"></div>
+  </div>
+</div>
+
+<script src="styles/components.js"></script>
+<script src="pages/saude-venda.js"></script>
+<script src="pages/pdv.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

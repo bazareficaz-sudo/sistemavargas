@@ -1,0 +1,75 @@
+{
+  "name": "pdv-vargas",
+  "version": "1.1.0",
+  "description": "PDV Vargas — Terminal de Vendas Offline-First",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "postinstall": "electron-rebuild -f -w better-sqlite3",
+    "build": "electron-builder --win --x64",
+    "build:dir": "electron-builder --win --x64 --dir",
+    "publish": "electron-builder --win --x64 --publish always"
+  },
+  "build": {
+    "appId": "com.vargas.pdv",
+    "productName": "PDV Vargas",
+    "copyright": "Copyright © 2025 Sistema Vargas",
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.ico",
+      "requestedExecutionLevel": "requireAdministrator"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "PDV Vargas"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "bazareficaz-sudo",
+      "repo": "sistemavargas",
+      "releaseType": "release"
+    },
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "node_modules/**/*",
+      "!node_modules/.cache/**/*",
+      "!**/*.map"
+    ],
+    "extraResources": [
+      {
+        "from": "assets",
+        "to": "assets"
+      }
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/better-sqlite3/**/*"
+    ]
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.10.1",
+    "electron-log": "^5.4.4",
+    "electron-store": "^8.1.0",
+    "electron-updater": "^6.8.9",
+    "node-fetch": "^2.7.0",
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^4.0.4",
+    "electron": "^29.4.6",
+    "electron-builder": "^24.13.3"
+  }
+}
