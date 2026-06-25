@@ -34,18 +34,22 @@ function montarPayload(venda) {
   const cfg = store.store;
   const usuario = cfg['auth.usuario'] || {};
 
-  // Dados da empresa fiscal (vindos do Base44 no login)
-  const cnpj       = usuario.empresa_fiscal_cnpj          || store.get('config.fiscal_cnpj') || '';
-  const ie         = usuario.empresa_fiscal_ie             || null;
-  const regime     = usuario.empresa_fiscal_regime         || 'simples_nacional';
-  const uf         = usuario.empresa_fiscal_uf             || null;
-  const cep        = usuario.empresa_fiscal_cep            || null;
-  const logradouro = usuario.empresa_fiscal_logradouro     || null;
-  const numero     = usuario.empresa_fiscal_numero         || 'S/N';
-  const bairro     = usuario.empresa_fiscal_bairro         || null;
-  const municipio  = usuario.empresa_fiscal_municipio      || null;
-  const codMunicipio = usuario.empresa_fiscal_cod_municipio || null;
-  const telefone   = usuario.empresa_fiscal_telefone       || null;
+  // Dados da empresa fiscal (vindos do Base44 no login — campos exatos do Base44)
+  const cnpj       = usuario.empresa_fiscal_cnpj       || store.get('config.fiscal_cnpj') || '';
+  const ie         = usuario.empresa_fiscal_ie          || null;
+  const regime     = usuario.empresa_fiscal_regime      || 'simples_nacional';
+  const uf         = usuario.empresa_fiscal_uf          || null;   // Base44: estado
+  const cep        = usuario.empresa_fiscal_cep         || null;
+  const logradouro = usuario.empresa_fiscal_logradouro  || null;
+  const numero     = usuario.empresa_fiscal_numero      || 'S/N';
+  const complemento= usuario.empresa_fiscal_complemento || null;
+  const bairro     = usuario.empresa_fiscal_bairro      || null;
+  const municipio  = usuario.empresa_fiscal_municipio   || null;   // Base44: cidade
+  const telefone   = usuario.empresa_fiscal_telefone    || null;
+  // ConfigFiscal — CSC e id_token obrigatórios em produção
+  const csc        = usuario.nfce_csc                   || null;
+  const idToken    = usuario.nfce_id_token              || null;
+  const serie      = usuario.nfce_serie                 || '001';
 
   // Identificação
   const now = new Date().toISOString().slice(0, 19) + '-03:00';
@@ -90,18 +94,22 @@ function montarPayload(venda) {
   }];
 
   const payload = {
-    // Emitente — dados completos da empresa fiscal
-    cnpj_emitente: cnpj,
-    ...(ie ? { inscricao_estadual_emitente: ie } : { inscricao_estadual_emitente: 'ISENTO' }),
-    ...(uf         ? { uf_emitente:          uf         } : {}),
-    ...(cep        ? { cep_emitente:         cep.replace(/\D/g,'') } : {}),
-    ...(logradouro ? { logradouro_emitente:  logradouro } : {}),
-    ...(numero     ? { numero_emitente:      numero     } : {}),
-    ...(bairro     ? { bairro_emitente:      bairro     } : {}),
-    ...(municipio  ? { municipio_emitente:   municipio  } : {}),
-    ...(codMunicipio ? { codigo_municipio_emitente: codMunicipio } : {}),
-    ...(telefone   ? { telefone_emitente:    telefone.replace(/\D/g,'') } : {}),
-    regime_tributario_emitente: regime === 'simples_nacional' ? 1 : regime === 'lucro_presumido' ? 3 : 3,
+    // Emitente — dados completos da empresa fiscal (Base44)
+    cnpj_emitente:   cnpj,
+    inscricao_estadual_emitente: ie || 'ISENTO',
+    ...(uf         ? { uf_emitente:         uf                      } : {}),
+    ...(cep        ? { cep_emitente:        cep.replace(/\D/g,'')   } : {}),
+    ...(logradouro ? { logradouro_emitente: logradouro              } : {}),
+    ...(numero     ? { numero_emitente:     numero                  } : {}),
+    ...(complemento? { complemento_emitente:complemento             } : {}),
+    ...(bairro     ? { bairro_emitente:     bairro                  } : {}),
+    ...(municipio  ? { municipio_emitente:  municipio               } : {}),
+    ...(telefone   ? { telefone_emitente:   telefone.replace(/\D/g,'')} : {}),
+    regime_tributario_emitente: regime === 'simples_nacional' ? 1 : 3,
+    // NFC-e: série e CSC (obrigatório em produção)
+    serie: serie,
+    ...(csc     ? { csc_nfce:      csc     } : {}),
+    ...(idToken ? { id_token_nfce: idToken } : {}),
 
     // Natureza e datas
     natureza_operacao:  'VENDA AO CONSUMIDOR',

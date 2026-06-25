@@ -401,39 +401,42 @@ async function autenticarPDV(login, senha) {
       unificar_estoque:    perms.unificar_estoque || u.unificar_estoque || false,
       permissoes:          perms,
     };
-    // Buscar dados completos das empresas e depósito (em paralelo)
+    // Buscar dados completos da empresa fiscal, estoque, depósito e config fiscal (em paralelo)
     try {
-      // Sempre buscar a empresa fiscal (mesmo que seja a mesma que a principal)
-      const [resFiscal, resEstoque, resDep] = await Promise.allSettled([
+      const [resFiscal, resEstoque, resDep, resCfgFiscal] = await Promise.allSettled([
         get(`/entities/Empresa/${usuario.empresa_fiscal_id}`),
         usuario.empresa_estoque_id !== usuario.empresa_fiscal_id
           ? get(`/entities/Empresa/${usuario.empresa_estoque_id}`) : Promise.resolve(null),
         usuario.deposito_id
           ? get(`/entities/Deposito/${usuario.deposito_id}`) : Promise.resolve(null),
+        // ConfigFiscal: série, CSC, id_token para NFC-e
+        get('/entities/ConfigFiscal', { q: JSON.stringify({ empresa_id: usuario.empresa_fiscal_id }), limit: 1 }),
       ]);
 
       if (resFiscal.status === 'fulfilled' && resFiscal.value) {
         const ef = resFiscal.value;
-        usuario.empresa_fiscal_nome          = ef.nome          || ef.razao_social || usuario.empresa_fiscal_id;
-        usuario.empresa_fiscal_cnpj          = ef.cnpj          || ef.documento    || null;
-        usuario.empresa_fiscal_ie            = ef.inscricao_estadual || ef.ie       || null;
-        usuario.empresa_fiscal_im            = ef.inscricao_municipal || ef.im      || null;
-        usuario.empresa_fiscal_regime        = ef.regime_tributario   || ef.regime  || 'simples_nacional';
-        usuario.empresa_fiscal_uf            = ef.uf || ef.estado     || null;
-        usuario.empresa_fiscal_cep           = ef.cep            || null;
-        usuario.empresa_fiscal_logradouro    = ef.logradouro     || ef.endereco    || null;
-        usuario.empresa_fiscal_numero        = ef.numero_endereco || ef.numero      || null;
-        usuario.empresa_fiscal_bairro        = ef.bairro         || null;
-        usuario.empresa_fiscal_municipio     = ef.municipio      || ef.cidade       || null;
-        usuario.empresa_fiscal_cod_municipio = ef.codigo_municipio|| ef.cod_municipio|| null;
-        usuario.empresa_fiscal_telefone      = ef.telefone       || null;
-        usuario.empresa_fiscal_token_focusnfe= ef.token_focusnfe || ef.focusnfe_token || null;
+        // Nomes exatos dos campos no Base44 (Empresa)
+        usuario.empresa_fiscal_nome      = ef.nome          || usuario.empresa_fiscal_id;
+        usuario.empresa_fiscal_fantasia  = ef.fantasia       || ef.nome || null;
+        usuario.empresa_fiscal_cnpj      = ef.cnpj           || null;
+        usuario.empresa_fiscal_ie        = ef.ie             || null;
+        usuario.empresa_fiscal_im        = ef.im             || null;
+        usuario.empresa_fiscal_regime    = ef.regime_tributario || 'simples_nacional';
+        usuario.empresa_fiscal_uf        = ef.estado         || null;
+        usuario.empresa_fiscal_cep       = ef.cep            || null;
+        usuario.empresa_fiscal_logradouro= ef.logradouro     || null;
+        usuario.empresa_fiscal_numero    = ef.numero         || 'S/N';
+        usuario.empresa_fiscal_complemento = ef.complemento  || null;
+        usuario.empresa_fiscal_bairro    = ef.bairro         || null;
+        usuario.empresa_fiscal_municipio = ef.cidade         || null;  // Base44 usa "cidade"
+        usuario.empresa_fiscal_telefone  = ef.telefone       || null;
+        usuario.empresa_fiscal_token_focusnfe = ef.token_focusnfe || null;
       } else {
         usuario.empresa_fiscal_nome = usuario.empresa_nome;
       }
 
       if (resEstoque.status === 'fulfilled' && resEstoque.value) {
-        usuario.empresa_estoque_nome = resEstoque.value.nome || resEstoque.value.razao_social;
+        usuario.empresa_estoque_nome = resEstoque.value.nome;
       } else {
         usuario.empresa_estoque_nome = usuario.empresa_fiscal_nome || usuario.empresa_nome;
       }
@@ -442,15 +445,33 @@ async function autenticarPDV(login, senha) {
         usuario.deposito_nome = resDep.value.nome;
       }
 
-      // Se o token FocusNFe está na empresa, salvar nas configs do terminal
-      if (usuario.empresa_fiscal_token_focusnfe) {
+      // ConfigFiscal: dados para emissão NFC-e
+      if (resCfgFiscal.status === 'fulfilled') {
+        const cfgList = Array.isArray(resCfgFiscal.value) ? resCfgFiscal.value : (resCfgFiscal.value?.results || []);
+        const cfg = cfgList[0];
+        if (cfg) {
+          usuario.nfce_serie        = cfg.serie_nfce          || '001';
+          usuario.nfce_ambiente     = cfg.ambiente             || 'homologacao';
+          usuario.nfce_csc          = cfg.csc_nfce             || null;
+          usuario.nfce_id_token     = cfg.id_token_nfce        || null;
+          usuario.nfce_habilitada   = cfg.habilita_nfce        || false;
+          // token FocusNFe pode estar em ConfigFiscal também
+          if (!usuario.empresa_fiscal_token_focusnfe && cfg.token_focusnfe) {
+            usuario.empresa_fiscal_token_focusnfe = cfg.token_focusnfe;
+          }
+        }
+      }
+
+      // Salvar token e CNPJ nas configs do terminal para acesso rápido
+      if (usuario.empresa_fiscal_token_focusnfe)
         store.set('config.fiscal_token', usuario.empresa_fiscal_token_focusnfe);
-      }
-      if (usuario.empresa_fiscal_cnpj) {
+      if (usuario.empresa_fiscal_cnpj)
         store.set('config.fiscal_cnpj', usuario.empresa_fiscal_cnpj);
-      }
+      if (usuario.nfce_ambiente)
+        store.set('config.fiscal_ambiente', usuario.nfce_ambiente);
+
     } catch (err) {
-      console.warn('[LOGIN] Erro ao buscar dados das empresas:', err.message);
+      console.warn('[LOGIN] Erro ao buscar dados fiscais:', err.message);
     }
 
     store.set('auth.token', u.id);
