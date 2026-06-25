@@ -226,7 +226,10 @@ function isRunning() { return !!server; }
 async function enviarParaServidor(dados) {
   const ip = store.get('config.print_server_ip') || '';
   if (!ip) throw new Error('IP do servidor de impressão não configurado');
-  const url = `http://${ip}/imprimir`;
+  // Aceita URL completa (tunnel Cloudflare) ou IP:porta local
+  const url = ip.startsWith('http://') || ip.startsWith('https://')
+    ? ip.replace(/\/$/, '') + '/imprimir'
+    : `http://${ip}/imprimir`;
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

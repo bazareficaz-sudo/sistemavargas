@@ -113,6 +113,14 @@ contextBridge.exposeInMainWorld('pdv', {
     listar:        ()       => ipcRenderer.invoke('print:listar'),
   },
 
+  // Cloudflare Tunnel
+  tunnel: {
+    start:    (porta) => ipcRenderer.invoke('tunnel:start', porta),
+    stop:     ()      => ipcRenderer.invoke('tunnel:stop'),
+    status:   ()      => ipcRenderer.invoke('tunnel:status'),
+    onStatus: (cb)    => ipcRenderer.on('tunnel:status', (_, data) => cb(data)),
+  },
+
   // Atualização
   update: {
     check:   () => ipcRenderer.invoke('update:check'),

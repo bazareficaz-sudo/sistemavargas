@@ -11,6 +11,7 @@ const db = require('./database');
 const sync = require('./sync');
 const api = require('./api');
 const printServer = require('./print-server');
+const tunnel = require('./tunnel');
 const updater = require('./updater');
 
 nativeTheme.themeSource = 'dark';
@@ -315,6 +316,15 @@ ipcMain.handle('entregas:atualizar', async (_, id, dados) => {
 });
 
 ipcMain.handle('entregas:getById', (_, id) => db.entregas.getById(id));
+
+// Cloudflare Tunnel
+ipcMain.handle('tunnel:start', async (_, porta) => {
+  return tunnel.start(porta || store.get('config.print_server_porta') || 3001, (status) => {
+    mainWindow?.webContents.send('tunnel:status', status);
+  });
+});
+ipcMain.handle('tunnel:stop', () => { tunnel.stop(); return { ok: true }; });
+ipcMain.handle('tunnel:status', () => tunnel.getStatus());
 
 // Atualização
 ipcMain.handle('update:check', () => updater.checarAgora());

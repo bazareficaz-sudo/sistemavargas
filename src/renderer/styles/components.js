@@ -1102,12 +1102,35 @@ const Config = {
       <div id="cfg-print-status" style="font-size:12px;color:var(--text3);margin-bottom:10px"></div>
     </div>
 
+    <!-- Cloudflare Tunnel (visível quando É servidor) -->
+    <div id="cfg-tunnel-section" style="display:none;margin-bottom:14px;padding:12px;background:var(--bg3);border-radius:8px;border:1px solid var(--border)">
+      <div style="font-size:13px;font-weight:600;margin-bottom:4px">🌐 Tunnel Cloudflare (acesso remoto)</div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:10px">
+        Permite que terminais em <b>outras redes</b> imprimam neste CAIXA via internet. Gratuito, sem conta necessária.
+      </div>
+      <div id="tunnel-status-box" style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+        <span id="tunnel-led" style="width:10px;height:10px;border-radius:50%;background:var(--text3);flex-shrink:0"></span>
+        <span id="tunnel-msg" style="font-size:12px;color:var(--text2)">Tunnel inativo</span>
+      </div>
+      <div id="tunnel-url-box" style="display:none;margin-bottom:10px">
+        <div style="font-size:11px;color:var(--text3);margin-bottom:4px">URL pública (copie e cole nos terminais remotos):</div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <input class="input" id="tunnel-url-display" readonly style="font-size:12px;font-family:monospace;background:var(--bg2)">
+          <button class="btn btn-ghost btn-sm" onclick="Config.copiarTunnelUrl()" title="Copiar URL">📋</button>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-primary btn-sm" id="btn-tunnel-start" onclick="Config.iniciarTunnel()">▶ Ativar Tunnel</button>
+        <button class="btn btn-danger btn-sm" id="btn-tunnel-stop" onclick="Config.pararTunnel()" style="display:none">■ Parar Tunnel</button>
+      </div>
+    </div>
+
     <!-- IP do CAIXA (visível quando NÃO é servidor) -->
     <div id="cfg-print-client-section">
       <div class="form-group">
-        <label class="form-label">IP do servidor de impressão (CAIXA)</label>
-        <input class="input" id="cfg-print-ip" placeholder="Ex: 192.168.1.10:3001">
-        <div style="font-size:11px;color:var(--text3);margin-top:4px">Deixe vazio para imprimir localmente neste terminal</div>
+        <label class="form-label">IP ou URL do servidor de impressão (CAIXA)</label>
+        <input class="input" id="cfg-print-ip" placeholder="Ex: 192.168.1.10:3001 ou https://xxx.trycloudflare.com">
+        <div style="font-size:11px;color:var(--text3);margin-top:4px">Deixe vazio para imprimir localmente. Aceita IP local ou URL do Tunnel Cloudflare.</div>
       </div>
       <button class="btn btn-ghost btn-sm" onclick="Config.testarConexaoImpressao()">Testar conexão</button>
     </div>
@@ -1164,10 +1187,15 @@ const Config = {
     if (printAtivo) {
       if (f('cfg-print-server-section')) f('cfg-print-server-section').style.display = '';
       if (f('cfg-print-client-section')) f('cfg-print-client-section').style.display = 'none';
+      if (f('cfg-tunnel-section')) f('cfg-tunnel-section').style.display = '';
       await this.carregarImpressoras();
       const status = await window.pdv.print.serverStatus();
       const el = f('cfg-print-status');
       if (el) el.textContent = status.rodando ? `🟢 Servidor ativo na porta ${status.porta}` : '⭕ Servidor inativo';
+      // Verificar status atual do tunnel
+      const ts = await window.pdv.tunnel.status();
+      if (ts) this._atualizarUiTunnel({ estado: ts.ativo ? 'ativo' : 'parado', url: ts.url, mensagem: ts.ativo ? `Tunnel ativo: ${ts.url}` : 'Tunnel inativo' });
+      window.pdv.tunnel.onStatus((s) => this._atualizarUiTunnel(s));
     }
 
     const temaAtual = await window.pdv.config.get('config.tema') || 'dark';
@@ -1230,6 +1258,8 @@ const Config = {
     this._setToggle('cfg-print-server', 'cfg-toggle-print', 'cfg-toggle-print-knob', ativo);
     document.getElementById('cfg-print-server-section').style.display = ativo ? '' : 'none';
     document.getElementById('cfg-print-client-section').style.display = ativo ? 'none' : '';
+    const ts = document.getElementById('cfg-tunnel-section');
+    if (ts) ts.style.display = ativo ? '' : 'none';
     if (ativo) {
       await this.carregarImpressoras();
       const status = await window.pdv.print.serverStatus();
@@ -1270,11 +1300,57 @@ const Config = {
     Toast.show('Configuração de impressão salva!', 'success');
   },
 
+  _atualizarUiTunnel(status) {
+    const led = document.getElementById('tunnel-led');
+    const msg = document.getElementById('tunnel-msg');
+    const urlBox = document.getElementById('tunnel-url-box');
+    const urlInput = document.getElementById('tunnel-url-display');
+    const btnStart = document.getElementById('btn-tunnel-start');
+    const btnStop  = document.getElementById('btn-tunnel-stop');
+    if (!led) return;
+    const ativo = status.estado === 'ativo' || status.ativo;
+    led.style.background = ativo ? 'var(--green)' : status.estado === 'erro' ? 'var(--red)' : status.estado === 'aguardando' || status.estado === 'iniciando' || status.estado === 'baixando' ? '#f59e0b' : 'var(--text3)';
+    msg.textContent = status.mensagem || (ativo ? `Tunnel ativo: ${status.url}` : 'Tunnel inativo');
+    if ((ativo || status.url) && status.url) {
+      urlBox.style.display = 'block';
+      urlInput.value = status.url;
+    } else {
+      urlBox.style.display = 'none';
+    }
+    if (btnStart) btnStart.style.display = ativo ? 'none' : '';
+    if (btnStop)  btnStop.style.display  = ativo ? '' : 'none';
+  },
+
+  async iniciarTunnel() {
+    const porta = parseInt(document.getElementById('cfg-print-porta')?.value || '3001');
+    this._atualizarUiTunnel({ estado: 'aguardando', mensagem: 'Iniciando tunnel Cloudflare...' });
+    window.pdv.tunnel.onStatus((s) => this._atualizarUiTunnel(s));
+    try {
+      const res = await window.pdv.tunnel.start(porta);
+      this._atualizarUiTunnel({ estado: 'ativo', url: res.url, mensagem: `Tunnel ativo: ${res.url}` });
+    } catch (e) {
+      this._atualizarUiTunnel({ estado: 'erro', mensagem: 'Erro: ' + e.message });
+    }
+  },
+
+  async pararTunnel() {
+    await window.pdv.tunnel.stop();
+    this._atualizarUiTunnel({ estado: 'parado', mensagem: 'Tunnel encerrado' });
+  },
+
+  copiarTunnelUrl() {
+    const url = document.getElementById('tunnel-url-display')?.value;
+    if (url) { navigator.clipboard.writeText(url); Toast.show('URL copiada!', 'success'); }
+  },
+
   async testarConexaoImpressao() {
     const ip = document.getElementById('cfg-print-ip')?.value.trim();
-    if (!ip) { Toast.show('Informe o IP do servidor', 'warning'); return; }
+    if (!ip) { Toast.show('Informe o IP ou URL do servidor', 'warning'); return; }
     try {
-      const res = await fetch(`http://${ip}/ping`);
+      const pingUrl = ip.startsWith('http://') || ip.startsWith('https://')
+        ? ip.replace(/\/$/, '') + '/ping'
+        : `http://${ip}/ping`;
+      const res = await fetch(pingUrl);
       if (res.ok) {
         Toast.show(`✅ Conectado ao servidor de impressão em ${ip}`, 'success');
       } else {
