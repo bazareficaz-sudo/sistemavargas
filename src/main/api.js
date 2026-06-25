@@ -403,10 +403,6 @@ async function autenticarPDV(login, senha) {
     };
     // Buscar dados completos da empresa fiscal, estoque, depósito e config fiscal (em paralelo)
     try {
-      console.log('[LOGIN] empresa_fiscal_id:', usuario.empresa_fiscal_id);
-      console.log('[LOGIN] empresa_estoque_id:', usuario.empresa_estoque_id);
-      console.log('[LOGIN] deposito_id:', usuario.deposito_id);
-
       const [resFiscal, resEstoque, resDep, resCfgFiscal] = await Promise.allSettled([
         get(`/entities/Empresa/${usuario.empresa_fiscal_id}`),
         usuario.empresa_estoque_id !== usuario.empresa_fiscal_id
@@ -415,9 +411,6 @@ async function autenticarPDV(login, senha) {
           ? get(`/entities/Deposito/${usuario.deposito_id}`) : Promise.resolve(null),
         get('/entities/ConfigFiscal', { q: JSON.stringify({ empresa_id: usuario.empresa_fiscal_id }), limit: 1 }),
       ]);
-
-      console.log('[LOGIN] resFiscal:', resFiscal.status, resFiscal.status === 'fulfilled' ? JSON.stringify(resFiscal.value).slice(0, 200) : resFiscal.reason?.message);
-      console.log('[LOGIN] resCfgFiscal:', resCfgFiscal.status, resCfgFiscal.status === 'fulfilled' ? JSON.stringify(resCfgFiscal.value).slice(0, 200) : resCfgFiscal.reason?.message);
 
       if (resFiscal.status === 'fulfilled' && resFiscal.value) {
         const ef = resFiscal.value;

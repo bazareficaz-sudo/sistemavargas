@@ -1286,11 +1286,11 @@ const Config = {
       Pendentes: ${status.pendentes || 0} operações`;
 
     // Fiscal — token manual + ambiente; CNPJ/empresa vêm do login (Base44)
-    if (f('cfg-fiscal-token'))    f('cfg-fiscal-token').value    = cfg['config.fiscal_token']    || '';
-    if (f('cfg-fiscal-ambiente')) f('cfg-fiscal-ambiente').value = cfg['config.fiscal_ambiente'] || 'homologacao';
+    if (f('cfg-fiscal-token'))    f('cfg-fiscal-token').value    = await window.pdv.config.get('config.fiscal_token')    || '';
+    if (f('cfg-fiscal-ambiente')) f('cfg-fiscal-ambiente').value = await window.pdv.config.get('config.fiscal_ambiente') || 'homologacao';
 
     // Painel informativo da empresa fiscal (dados da sessão)
-    const user = cfg['auth.usuario'];
+    const user = await window.pdv.config.get('auth.usuario');
     const infoEl = f('cfg-fiscal-empresa-info');
     if (infoEl) {
       if (user?.empresa_fiscal_cnpj) {
