@@ -83,6 +83,17 @@ contextBridge.exposeInMainWorld('pdv', {
     logout: () => ipcRenderer.invoke('auth:logout'),
   },
 
+  // Carteira de Clientes
+  carteira: {
+    resumo:        ()                                    => ipcRenderer.invoke('carteira:resumo'),
+    listar:        (query)                               => ipcRenderer.invoke('carteira:listar', query),
+    ultimoPgto:    (id)                                  => ipcRenderer.invoke('carteira:ultimoPgto', id),
+    contasAbertas: (clienteId)                           => ipcRenderer.invoke('carteira:contasAbertas', clienteId),
+    pagar:         (id, forma, obs)                      => ipcRenderer.invoke('carteira:pagar', id, forma, obs),
+    pagarParcial:  (id, valorPago, valorOrig, forma, obs) => ipcRenderer.invoke('carteira:pagarParcial', id, valorPago, valorOrig, forma, obs),
+    usarCredito:   (contaId, contaValor, creditoId, creditoSaldo, obs) => ipcRenderer.invoke('carteira:usarCredito', contaId, contaValor, creditoId, creditoSaldo, obs),
+  },
+
   // Impressão
   print: {
     local:         (dados)  => ipcRenderer.invoke('print:local', dados),

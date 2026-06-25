@@ -188,6 +188,72 @@ async function receberCreditoCliente(remoteId, saldoNovo, novoStatus, observacao
   });
 }
 
+// ─── ContaReceber (Fiado / Carteira) ──────────────────────────────────
+
+async function sincronizarContasReceber() {
+  const todos = [];
+  const limit = 200;
+  let skip = 0;
+  const query = { empresa_id: EMPRESA_ID, status: 'pendente' };
+  while (true) {
+    const res = await get('/entities/ContaReceber', { q: query, limit, skip, sort_by: 'vencimento' });
+    const items = Array.isArray(res) ? res : (res.results || []);
+    todos.push(...items);
+    if (items.length < limit) break;
+    skip += items.length;
+  }
+  return todos;
+}
+
+async function pagarContaReceber(contaId, formaPagamento, observacao) {
+  return put(`/entities/ContaReceber/${contaId}`, {
+    status: 'pago',
+    data_pagamento: new Date().toISOString().split('T')[0],
+    forma_recebimento: formaPagamento || 'dinheiro',
+    observacao: observacao || null,
+  });
+}
+
+async function pagarContaReceberParcial(contaId, valorPago, valorOriginal, formaPagamento, observacao) {
+  const valorRestante = Math.round((valorOriginal - valorPago) * 100) / 100;
+  // Atualiza o valor da conta para o restante (pagamento parcial)
+  return put(`/entities/ContaReceber/${contaId}`, {
+    valor: valorRestante,
+    observacao: `Pgto parcial R$ ${valorPago.toFixed(2)} (${formaPagamento || 'dinheiro'})${observacao ? ' — ' + observacao : ''}`,
+  });
+}
+
+async function usarCreditoEmConta(contaId, contaValor, creditoId, creditoSaldoAtual, formaPagamento, observacao) {
+  const hoje = new Date().toISOString().split('T')[0];
+  if (creditoSaldoAtual >= contaValor) {
+    // Crédito cobre a conta inteira — quita a conta, abate o crédito
+    await put(`/entities/ContaReceber/${contaId}`, {
+      status: 'pago',
+      data_pagamento: hoje,
+      forma_recebimento: 'credito_loja',
+      observacao: observacao || 'Pago com crédito loja',
+    });
+    const novoSaldo = Math.round((creditoSaldoAtual - contaValor) * 100) / 100;
+    await put(`/entities/CreditoCliente/${creditoId}`, {
+      saldo_atual: novoSaldo,
+      status: novoSaldo <= 0 ? 'usado_totalmente' : 'usado_parcialmente',
+    });
+    return { quitou: true, saldoCreditoRestante: novoSaldo };
+  } else {
+    // Crédito não cobre tudo — abate parcialmente a conta, zera o crédito
+    const valorRestante = Math.round((contaValor - creditoSaldoAtual) * 100) / 100;
+    await put(`/entities/ContaReceber/${contaId}`, {
+      valor: valorRestante,
+      observacao: `Crédito loja R$ ${creditoSaldoAtual.toFixed(2)} aplicado — restam R$ ${valorRestante.toFixed(2)}`,
+    });
+    await put(`/entities/CreditoCliente/${creditoId}`, {
+      saldo_atual: 0,
+      status: 'usado_totalmente',
+    });
+    return { quitou: false, saldoCreditoRestante: 0, valorRestante };
+  }
+}
+
 // ─── Clientes ─────────────────────────────────────────────────────────
 
 async function registrarCliente(cliente) {
@@ -353,6 +419,10 @@ module.exports = {
   sincronizarCreditosCliente,
   getCreditosDoCliente,
   receberCreditoCliente,
+  sincronizarContasReceber,
+  pagarContaReceber,
+  pagarContaReceberParcial,
+  usarCreditoEmConta,
   registrarVenda,
   cancelarVenda,
   listarVendasCloud,

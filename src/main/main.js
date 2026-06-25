@@ -220,6 +220,51 @@ ipcMain.handle('print:listar', async () => {
   return printServer.listarImpressoras(mainWindow);
 });
 
+// Carteira de Clientes
+ipcMain.handle('carteira:resumo', () => db.creditosCliente.resumoGeral());
+ipcMain.handle('carteira:listar', (_, query) => db.creditosCliente.listarCarteira(query || ''));
+ipcMain.handle('carteira:ultimoPgto', (_, remoteId) => db.creditosCliente.ultimoPagamento(remoteId));
+ipcMain.handle('carteira:contasAbertas', (_, clienteRemoteId) => db.contasReceber.getContasAbertas(clienteRemoteId));
+ipcMain.handle('carteira:pagar', async (_, contaId, forma, obs) => {
+  db.contasReceber.marcarPago(contaId, forma, obs);
+  try {
+    await api.pagarContaReceber(contaId, forma, obs);
+    return { ok: true };
+  } catch (err) {
+    return { ok: true, offline: true };
+  }
+});
+
+ipcMain.handle('carteira:pagarParcial', async (_, contaId, valorPago, valorOriginal, forma, obs) => {
+  const valorRestante = Math.round((valorOriginal - valorPago) * 100) / 100;
+  const obsCompleta = `Pgto parcial R$ ${valorPago.toFixed(2)} (${forma})${obs ? ' — ' + obs : ''}`;
+  db.contasReceber.atualizarValor(contaId, valorRestante, obsCompleta);
+  try {
+    await api.pagarContaReceberParcial(contaId, valorPago, valorOriginal, forma, obs);
+    return { ok: true, valorRestante };
+  } catch (err) {
+    return { ok: true, offline: true, valorRestante };
+  }
+});
+
+ipcMain.handle('carteira:usarCredito', async (_, contaId, contaValor, creditoId, creditoSaldo, obs) => {
+  try {
+    const resultado = await api.usarCreditoEmConta(contaId, contaValor, creditoId, creditoSaldo, 'credito_loja', obs);
+    if (resultado.quitou) {
+      db.contasReceber.marcarPago(contaId, 'credito_loja', obs || 'Pago com crédito loja');
+    } else {
+      db.contasReceber.atualizarValor(contaId, resultado.valorRestante, `Crédito loja aplicado`);
+    }
+    // Atualizar saldo do crédito localmente
+    if (resultado.saldoCreditoRestante <= 0) {
+      db.creditosCliente.marcarUsado(creditoId);
+    }
+    return { ok: true, ...resultado };
+  } catch (err) {
+    return { ok: false, erro: err.message };
+  }
+});
+
 // Atualização
 ipcMain.handle('update:check', () => updater.checarAgora());
 ipcMain.handle('update:install', () => updater.instalarAgora());

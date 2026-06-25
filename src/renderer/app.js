@@ -29,6 +29,9 @@ const App = (() => {
     // null = offline/admin (sem restrições); objeto = permissões por chave
     window.PDV_PERMS = usuario?.permissoes || null;
     renderNavUser();
+    // Mostrar Carteira no menu apenas para quem tem permissão
+    const navCarteira = document.getElementById('nav-carteira');
+    if (navCarteira) navCarteira.style.display = podePermissao('receber_contas_clientes') ? 'flex' : 'none';
   }
 
   async function renderNavUser() {
@@ -57,14 +60,16 @@ const App = (() => {
     const titles = {
       pdv: 'Frente de Caixa', clientes: 'Clientes',
       produtos: 'Produtos', vendas: 'Vendas',
-      estoque: 'Estoque', faltas: 'Faltas & Encomendas', config: 'Configurações'
+      estoque: 'Estoque', faltas: 'Faltas & Encomendas',
+      carteira: 'Carteira de Clientes', config: 'Configurações'
     };
     document.getElementById('titlebar-page').textContent = titles[page] || '';
 
     // Renderizar página
     const content = document.getElementById('main-content');
     const pages = { pdv: PDV, produtos: Produtos, clientes: Clientes,
-                    vendas: Vendas, estoque: Estoque, faltas: Faltas, config: Config };
+                    vendas: Vendas, estoque: Estoque, faltas: Faltas,
+                    carteira: Carteira, config: Config };
     const p = pages[page];
     if (p) {
       content.innerHTML = p.render();

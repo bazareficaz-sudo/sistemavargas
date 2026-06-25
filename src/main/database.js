@@ -75,7 +75,10 @@ function createTables() {
       telefone TEXT,
       email TEXT,
       limite_credito REAL DEFAULT 0,
-      saldo_credito REAL DEFAULT 0,
+      saldo_credito REAL DEFAULT 0,   -- crédito loja (devoluções) — legado
+      saldo_devedor REAL DEFAULT 0,   -- fiado/carteira: o que o cliente deve à loja
+      status_credito TEXT DEFAULT 'liberado',
+      permite_carteira INTEGER DEFAULT 0,
       updated_at TEXT,
       synced_at TEXT,
       sync_status TEXT DEFAULT 'synced'
@@ -173,6 +176,26 @@ function createTables() {
       updated_date TEXT
     );
 
+    -- Contas a Receber (fiado / carteira) — sincronizado de ContaReceber no Base44
+    CREATE TABLE IF NOT EXISTS contas_receber (
+      id TEXT PRIMARY KEY,        -- remote_id do Base44
+      empresa_id TEXT,
+      cliente_id TEXT,            -- remote_id do cliente
+      cliente_nome TEXT,
+      valor REAL NOT NULL DEFAULT 0,
+      descricao TEXT,
+      origem TEXT DEFAULT 'carteira',
+      status TEXT DEFAULT 'pendente',  -- pendente | pago | cancelado
+      vencimento TEXT,
+      data_pagamento TEXT,
+      forma_recebimento TEXT,
+      referencia TEXT,
+      observacao TEXT,
+      created_date TEXT,
+      updated_date TEXT,
+      synced_at TEXT
+    );
+
     -- Fila de sync (operações offline pendentes)
     CREATE TABLE IF NOT EXISTS sync_queue (
       id TEXT PRIMARY KEY,
@@ -237,6 +260,16 @@ function runMigrations() {
       status TEXT DEFAULT 'pendente', origem TEXT DEFAULT 'pdv',
       usuario_nome TEXT, created_at TEXT NOT NULL,
       synced_at TEXT, sync_status TEXT DEFAULT 'pending'
+    )`,
+    'ALTER TABLE clientes ADD COLUMN saldo_devedor REAL DEFAULT 0',
+    'ALTER TABLE clientes ADD COLUMN status_credito TEXT DEFAULT \'liberado\'',
+    'ALTER TABLE clientes ADD COLUMN permite_carteira INTEGER DEFAULT 0',
+    `CREATE TABLE IF NOT EXISTS contas_receber (
+      id TEXT PRIMARY KEY, empresa_id TEXT, cliente_id TEXT, cliente_nome TEXT,
+      valor REAL NOT NULL DEFAULT 0, descricao TEXT, origem TEXT DEFAULT 'carteira',
+      status TEXT DEFAULT 'pendente', vencimento TEXT, data_pagamento TEXT,
+      forma_recebimento TEXT, referencia TEXT, observacao TEXT,
+      created_date TEXT, updated_date TEXT, synced_at TEXT
     )`,
   ];
   for (const sql of migrations) {
@@ -470,13 +503,15 @@ const clientes = {
 
     db.prepare(`
       INSERT OR REPLACE INTO clientes
-      (id, remote_id, nome, nome_lower, cpf_cnpj, telefone, email, limite_credito, saldo_credito, updated_at, sync_status)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?)
+      (id, remote_id, nome, nome_lower, cpf_cnpj, telefone, email, limite_credito, saldo_credito,
+       saldo_devedor, status_credito, permite_carteira, updated_at, sync_status)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     `).run(
       id, remoteId,
       cliente.nome, cliente.nome?.toLowerCase(),
       cliente.cpf_cnpj || null, cliente.telefone || null, cliente.email || null,
       cliente.limite_credito || 0, cliente.saldo_credito || 0,
+      cliente.saldo_devedor || 0, cliente.status_credito || 'liberado', cliente.permite_carteira ? 1 : 0,
       new Date().toISOString(), remoteId ? 'synced' : 'pending'
     );
 
@@ -497,14 +532,16 @@ const clientes = {
   upsertBatch(lista) {
     const stmt = db.prepare(`
       INSERT OR REPLACE INTO clientes
-      (id, remote_id, nome, nome_lower, cpf_cnpj, telefone, email, limite_credito, saldo_credito, updated_at, synced_at, sync_status)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+      (id, remote_id, nome, nome_lower, cpf_cnpj, telefone, email, limite_credito, saldo_credito,
+       saldo_devedor, status_credito, permite_carteira, updated_at, synced_at, sync_status)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     `);
     const t = db.transaction(items => {
       for (const c of items) {
         stmt.run(c.local_id || uuidv4(), c.id, c.nome, c.nome?.toLowerCase(),
           c.cpf_cnpj || null, c.telefone || null, c.email || null,
           c.limite_credito || 0, c.saldo_credito || 0,
+          c.saldo_devedor || 0, c.status_credito || 'liberado', c.permite_carteira ? 1 : 0,
           c.updated_at || new Date().toISOString(), new Date().toISOString(), 'synced');
       }
     });
@@ -536,7 +573,61 @@ const vendedores = {
   }
 };
 
-// ─── CRÉDITOS CLIENTE (Contas a Receber) ──────────────────────────
+// ─── CONTAS A RECEBER (Fiado / Carteira) ─────────────────────────
+const contasReceber = {
+  upsertBatch(lista) {
+    const stmt = db.prepare(`
+      INSERT OR REPLACE INTO contas_receber
+      (id, empresa_id, cliente_id, cliente_nome, valor, descricao,
+       origem, status, vencimento, data_pagamento, forma_recebimento,
+       referencia, observacao, created_date, updated_date, synced_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    `);
+    const t = db.transaction(items => {
+      for (const c of items) {
+        stmt.run(
+          c.id, c.empresa_id || null,
+          c.cliente_id || null, c.cliente_nome || null,
+          c.valor || 0, c.descricao || null,
+          c.origem || 'carteira', c.status || 'pendente',
+          c.vencimento || null, c.data_pagamento || null, c.forma_recebimento || null,
+          c.referencia || null, c.observacao || null,
+          c.created_date || null, c.updated_date || null,
+          new Date().toISOString()
+        );
+      }
+    });
+    t(lista);
+  },
+
+  // Contas pendentes de um cliente
+  getContasAbertas(clienteRemoteId) {
+    return db.prepare(`
+      SELECT id, valor, descricao, origem, status, vencimento, data_pagamento, referencia, observacao, created_date
+      FROM contas_receber
+      WHERE cliente_id = ? AND status = 'pendente'
+      ORDER BY vencimento ASC, created_date ASC
+    `).all(clienteRemoteId);
+  },
+
+  // Marcar como pago localmente
+  marcarPago(id, formaPagamento, obs) {
+    db.prepare(`
+      UPDATE contas_receber
+      SET status = 'pago', data_pagamento = ?, forma_recebimento = ?, observacao = ?, updated_date = ?
+      WHERE id = ?
+    `).run(new Date().toISOString().split('T')[0], formaPagamento || 'dinheiro', obs || null, new Date().toISOString(), id);
+  },
+
+  // Atualizar valor para pagamento parcial (mantém como pendente)
+  atualizarValor(id, novoValor, obs) {
+    db.prepare(`
+      UPDATE contas_receber SET valor = ?, observacao = ?, updated_date = ? WHERE id = ?
+    `).run(novoValor, obs || null, new Date().toISOString(), id);
+  }
+};
+
+// ─── CRÉDITOS CLIENTE (Crédito Loja / Devoluções) ─────────────────
 const creditosCliente = {
   upsertBatch(lista) {
     const stmt = db.prepare(`
@@ -570,6 +661,11 @@ const creditosCliente = {
     `).all(clienteRemoteId);
   },
 
+  // Zerar crédito localmente após uso
+  marcarUsado(creditoId) {
+    db.prepare(`UPDATE creditos_cliente SET saldo_atual = 0, status = 'usado_totalmente' WHERE id = ?`).run(creditoId);
+  },
+
   // Resumo de créditos por cliente para mostrar na lista
   resumoPorCliente(clienteRemoteId) {
     return db.prepare(`
@@ -587,6 +683,90 @@ const creditosCliente = {
     db.prepare(`
       UPDATE creditos_cliente SET saldo_atual = ?, status = ?, updated_date = ? WHERE id = ?
     `).run(novoSaldo, novoStatus, new Date().toISOString(), remoteId);
+  },
+
+  // ─── Carteira de Clientes ────────────────────────────────────────
+  // Resumo geral para o header
+  resumoGeral() {
+    const totais = db.prepare(`
+      SELECT
+        COUNT(DISTINCT cliente_id) as total_clientes,
+        COALESCE(SUM(valor), 0)    as total_a_receber
+      FROM contas_receber
+      WHERE status = 'pendente'
+    `).get() || { total_clientes: 0, total_a_receber: 0 };
+
+    // Vencido: clientes com dívida e prazo ultrapassado 30 dias (simplificado)
+    const vencido = db.prepare(`
+      SELECT COALESCE(SUM(cr.saldo_atual), 0) as total_vencido
+      FROM creditos_cliente cr
+      WHERE cr.status IN ('aberto', 'usado_parcialmente')
+        AND julianday('now') - julianday(cr.created_date) > 30
+    `).get()?.total_vencido || 0;
+
+    // Crédito loja: soma dos CreditoCliente abertos (devoluções)
+    const credito_loja = db.prepare(`
+      SELECT COALESCE(SUM(saldo_atual), 0) as total
+      FROM creditos_cliente
+      WHERE status IN ('aberto', 'usado_parcialmente')
+    `).get()?.total || 0;
+
+    return { ...totais, total_vencido: vencido, credito_loja };
+  },
+
+  // Lista clientes com dívidas ou limite de crédito configurado
+  listarCarteira(query = '') {
+    const q = query.trim().toLowerCase();
+    const filtroNome = q ? `AND (c.nome_lower LIKE '%${q}%' OR c.cpf_cnpj LIKE '%${q}%' OR c.telefone LIKE '%${q}%')` : '';
+    return db.prepare(`
+      SELECT
+        c.remote_id,
+        c.nome,
+        c.telefone,
+        c.cpf_cnpj,
+        c.limite_credito,
+        COALESCE(cr.total_a_receber, 0)      AS total_a_receber,
+        COALESCE(cred.credito_loja, 0)       AS saldo_credito,
+        COALESCE(cr.pendentes, 0)            AS pendentes,
+        cr.vencimento_mais_antigo            AS credito_mais_antigo,
+        cr.ultimo_vencimento                 AS ultimo_movimento
+      FROM clientes c
+      LEFT JOIN (
+        SELECT
+          cliente_id,
+          SUM(valor)            AS total_a_receber,
+          COUNT(*)              AS pendentes,
+          MIN(vencimento)       AS vencimento_mais_antigo,
+          MAX(vencimento)       AS ultimo_vencimento
+        FROM contas_receber
+        WHERE status = 'pendente'
+        GROUP BY cliente_id
+      ) cr ON cr.cliente_id = c.remote_id
+      LEFT JOIN (
+        SELECT
+          cliente_id,
+          SUM(saldo_atual)      AS credito_loja
+        FROM creditos_cliente
+        WHERE status IN ('aberto', 'usado_parcialmente')
+        GROUP BY cliente_id
+      ) cred ON cred.cliente_id = c.remote_id
+      WHERE c.remote_id IS NOT NULL
+        AND (COALESCE(cr.total_a_receber, 0) > 0 OR c.limite_credito > 0 OR COALESCE(cred.credito_loja, 0) > 0)
+        ${filtroNome}
+      ORDER BY COALESCE(cr.total_a_receber, 0) DESC
+    `).all();
+  },
+
+  // Último pagamento registrado para o cliente (venda com forma carteira/fiado)
+  ultimoPagamento(clienteRemoteId) {
+    return db.prepare(`
+      SELECT created_at, total, forma_pagamento
+      FROM vendas
+      WHERE cliente_id = (SELECT id FROM clientes WHERE remote_id = ?)
+        AND forma_pagamento IN ('carteira','fiado','credito_cliente')
+        AND status != 'cancelada'
+      ORDER BY created_at DESC LIMIT 1
+    `).get(clienteRemoteId);
   }
 };
 
@@ -889,6 +1069,7 @@ module.exports = {
   produtos,
   clientes,
   vendedores,
+  contasReceber,
   creditosCliente,
   vendas,
   estoque,

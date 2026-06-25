@@ -53,6 +53,9 @@
         <button class="nav-btn" data-page="vendas" onclick="App.navigate('vendas')">
           <span class="nav-icon">🧾</span><span>Vendas</span>
         </button>
+        <button class="nav-btn" data-page="carteira" onclick="App.navigate('carteira')" id="nav-carteira" style="display:none">
+          <span class="nav-icon">👛</span><span>Carteira</span>
+        </button>
         <button class="nav-btn" data-page="faltas" onclick="App.navigate('faltas')" style="position:relative">
           <span class="nav-icon">📋</span><span>Faltas</span>
           <span id="faltas-badge" style="display:none;background:var(--red);color:#fff;
@@ -89,6 +92,7 @@
 <script src="styles/components.js"></script>
 <script src="pages/saude-venda.js"></script>
 <script src="pages/pdv.js"></script>
+<script src="pages/carteira.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

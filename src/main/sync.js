@@ -84,6 +84,7 @@ async function syncNow(win) {
     await syncDownEstoque();
     await syncDownVendedores();
     await syncDownCreditosCliente();
+    await syncDownContasReceber();
     await syncDownConfigDesconto();
     await syncDownConfigTermometro();
     await syncDownFaltas();
@@ -144,14 +145,17 @@ function mapProduto(p) {
 
 function mapCliente(c) {
   return {
-    id:              c.id,
-    nome:            c.nome,
-    cpf_cnpj:        c.cpf_cnpj   || null,
-    telefone:        c.telefone   || null,
-    email:           c.email      || null,
-    limite_credito:  c.limite_credito || 0,
-    saldo_credito:   c.saldo_credito  || 0,
-    updated_at:      c.updated_date || new Date().toISOString(),
+    id:               c.id,
+    nome:             c.nome,
+    cpf_cnpj:         c.cpf_cnpj        || null,
+    telefone:         c.telefone        || null,
+    email:            c.email           || null,
+    limite_credito:   c.limite_credito  || 0,
+    saldo_credito:    c.saldo_credito   || 0,
+    saldo_devedor:    c.saldo_devedor   || 0,
+    status_credito:   c.status_credito  || 'liberado',
+    permite_carteira: c.permite_carteira || false,
+    updated_at:       c.updated_date    || new Date().toISOString(),
   };
 }
 
@@ -225,6 +229,21 @@ async function syncDownCreditosCliente() {
     }
   } catch (err) {
     console.warn('[SYNC] CreditosCliente: erro (não crítico):', err.message);
+  }
+}
+
+async function syncDownContasReceber() {
+  emitir(mainWindowRef, 'sync:update', { ...syncStatus, progresso: 'Sincronizando contas a receber...' });
+  try {
+    const contas = await api.sincronizarContasReceber();
+    if (contas.length > 0) {
+      db.contasReceber.upsertBatch(contas);
+      console.log(`[SYNC] ContasReceber: ${contas.length} registros sincronizados`);
+    } else {
+      console.log('[SYNC] ContasReceber: nenhum registro pendente');
+    }
+  } catch (err) {
+    console.warn('[SYNC] ContasReceber: erro (não crítico):', err.message);
   }
 }
 
