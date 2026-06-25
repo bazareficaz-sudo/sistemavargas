@@ -427,6 +427,12 @@ const PDV = (() => {
   function toggleEntregar(produtoId) {
     const item = cart.find(i => i.produto_id === produtoId);
     if (!item || item.devolucao) return;
+    // Avisar sobre cliente ao ATIVAR entrega (não ao desativar)
+    if (!item.entregar && !selectedClient) {
+      Toast.show('Selecione um cliente antes de marcar entrega', 'warning');
+      openClientSearch();
+      return;
+    }
     item.entregar = !item.entregar;
     renderCart();
     _atualizarBadgeEntregas();
@@ -678,63 +684,90 @@ const PDV = (() => {
   // Etapa 2b (condicional): Agendar Entrega
   function _abrirModalEntrega() {
     if (!selectedClient) {
-      Toast.show('Selecione um cliente para agendar entrega', 'warning');
-      _abrirModalVendedor();
+      Modal.close();
+      Toast.show('⚠️ Selecione um cliente antes de agendar entrega', 'warning');
+      setTimeout(() => openClientSearch(), 150);
       return;
     }
     const c = selectedClient;
     const itens = _itensParaEntrega();
     const totalEnt = itens.reduce((s, i) => s + i.total, 0);
-    // Pré-preencher com dados do cliente se existirem
-    const cep = c.cep || '';
+    const cep        = c.cep        || '';
     const logradouro = c.logradouro || c.endereco || '';
-    const numero = c.numero || '';
-    const complemento = c.complemento || '';
-    const bairro = c.bairro || '';
-    const cidade = c.cidade || '';
-    const estado = c.estado || '';
-    // Data mínima = hoje
-    const hoje = new Date().toISOString().split('T')[0];
+    const numero     = c.numero     || '';
+    const complemento= c.complemento|| '';
+    const bairro     = c.bairro     || '';
+    const cidade     = c.cidade     || '';
+    const estado     = c.estado     || '';
+    const telefone   = c.telefone   || c.whatsapp || '';
+    const hoje       = new Date().toISOString().split('T')[0];
+
+    const itensList = itens.map(i =>
+      `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)">
+        <span style="font-size:12px">${i.quantidade}x ${i.produto_nome}</span>
+        <span style="font-size:12px;font-weight:600">R$ ${fmtMoney(i.total)}</span>
+      </div>`
+    ).join('');
 
     Modal.open(`
-<div style="margin-bottom:12px">
-  <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+<div style="margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--border)">
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
     <span style="background:var(--accent-bg);color:var(--accent);border-radius:20px;padding:2px 10px;font-size:11px;font-weight:700">ETAPA 2 DE 3</span>
-    <span style="font-size:12px;color:var(--text3)">Pagamento ✓ → 🚚 Entrega → Vendedor</span>
+    <span style="font-size:11px;color:var(--text3)">Pagamento ✓ → 🚚 Entrega → Vendedor</span>
   </div>
-  <div style="font-size:12px;color:var(--text2)">${itens.length} item${itens.length > 1 ? 's' : ''} para entrega · R$ ${fmtMoney(totalEnt)}</div>
+  <div style="background:var(--surface2);border-radius:8px;padding:10px;margin-bottom:8px">
+    ${itensList}
+    <div style="display:flex;justify-content:space-between;padding-top:6px;font-weight:700;font-size:13px">
+      <span>${itens.length} item${itens.length > 1 ? 's' : ''} para entrega</span>
+      <span style="color:var(--accent)">R$ ${fmtMoney(totalEnt)}</span>
+    </div>
+  </div>
 </div>
 
-${!selectedClient ? `<div style="background:var(--red);color:#fff;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:13px">
-  ⚠️ Entrega exige cliente selecionado. Volte e selecione um cliente.
-</div>` : ''}
+<!-- Cliente -->
+<div style="background:var(--accent-bg);border:1px solid var(--accent);border-radius:8px;padding:10px;margin-bottom:14px">
+  <div style="font-size:11px;font-weight:700;color:var(--accent);margin-bottom:6px;text-transform:uppercase">📋 Dados do Cliente</div>
+  <div style="font-size:13px;font-weight:600;margin-bottom:6px">👤 ${c.nome}</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+    <div>
+      <label class="form-label" style="font-size:10px">Telefone / WhatsApp *</label>
+      <input class="input" id="ent-telefone" value="${telefone}" placeholder="(99) 99999-9999" style="font-size:13px">
+    </div>
+    <div>
+      <label class="form-label" style="font-size:10px">CPF / Documento</label>
+      <input class="input" id="ent-doc" value="${c.cpf || c.documento || ''}" placeholder="Opcional" style="font-size:13px">
+    </div>
+  </div>
+</div>
 
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+<!-- Endereço -->
+<div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;margin-bottom:8px">📍 Endereço de Entrega</div>
+<div style="display:grid;grid-template-columns:130px 1fr;gap:10px;margin-bottom:10px">
   <div>
     <label class="form-label">CEP</label>
     <input class="input" id="ent-cep" value="${cep}" placeholder="00000-000" maxlength="9"
       oninput="PDV._buscarCep(this.value)" style="font-size:13px">
   </div>
   <div>
-    <label class="form-label">Número *</label>
-    <input class="input" id="ent-numero" value="${numero}" placeholder="123" style="font-size:13px">
+    <label class="form-label">Logradouro *</label>
+    <input class="input" id="ent-logradouro" value="${logradouro}" placeholder="Rua, Avenida, Estrada..." style="font-size:13px">
   </div>
 </div>
-<div class="form-group" style="margin-bottom:10px">
-  <label class="form-label">Logradouro *</label>
-  <input class="input" id="ent-logradouro" value="${logradouro}" placeholder="Rua, Av, etc." style="font-size:13px">
-</div>
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+<div style="display:grid;grid-template-columns:80px 1fr 1fr;gap:10px;margin-bottom:10px">
+  <div>
+    <label class="form-label">Número *</label>
+    <input class="input" id="ent-numero" value="${numero}" placeholder="Nº" style="font-size:13px">
+  </div>
   <div>
     <label class="form-label">Complemento</label>
-    <input class="input" id="ent-complemento" value="${complemento}" placeholder="Apto, Bloco..." style="font-size:13px">
+    <input class="input" id="ent-complemento" value="${complemento}" placeholder="Apto, Bloco, Casa..." style="font-size:13px">
   </div>
   <div>
     <label class="form-label">Bairro *</label>
     <input class="input" id="ent-bairro" value="${bairro}" placeholder="Bairro" style="font-size:13px">
   </div>
 </div>
-<div style="display:grid;grid-template-columns:1fr 80px;gap:10px;margin-bottom:10px">
+<div style="display:grid;grid-template-columns:1fr 70px;gap:10px;margin-bottom:10px">
   <div>
     <label class="form-label">Cidade *</label>
     <input class="input" id="ent-cidade" value="${cidade}" placeholder="Cidade" style="font-size:13px">
@@ -744,30 +777,54 @@ ${!selectedClient ? `<div style="background:var(--red);color:#fff;padding:10px 1
     <input class="input" id="ent-estado" value="${estado}" placeholder="RJ" maxlength="2" style="font-size:13px;text-transform:uppercase">
   </div>
 </div>
+<div class="form-group" style="margin-bottom:10px">
+  <label class="form-label">Ponto de Referência</label>
+  <input class="input" id="ent-referencia" value="${c.referencia || ''}" placeholder="Ex: Próximo ao mercado João, portão azul..." style="font-size:13px">
+</div>
+<div class="form-group" style="margin-bottom:14px">
+  <label class="form-label">Instrução de Entrega / Observação</label>
+  <textarea class="input" id="ent-obs" rows="2" placeholder="Ex: Ligar antes de chegar, entregar no portão lateral..."
+    style="font-size:13px;resize:none">${c.obs_entrega || ''}</textarea>
+</div>
+
+<!-- Agendamento -->
+<div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;margin-bottom:8px">📅 Agendamento</div>
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
   <div>
-    <label class="form-label">Data Agendada *</label>
+    <label class="form-label">Data de Entrega *</label>
     <input class="input" id="ent-data" type="date" min="${hoje}" value="${hoje}" style="font-size:13px">
   </div>
   <div>
-    <label class="form-label">Turno</label>
-    <select class="input" id="ent-turno" style="font-size:13px">
-      <option value="qualquer">Qualquer horário</option>
-      <option value="manha">Manhã</option>
-      <option value="tarde">Tarde</option>
-      <option value="noite">Noite</option>
-    </select>
+    <label class="form-label">Período preferencial *</label>
+    <div style="display:flex;gap:4px;margin-top:4px" id="ent-turno-wrap">
+      ${['Qualquer','Manhã','Tarde','Noite'].map((t,i) => {
+        const val = ['qualquer','manha','tarde','noite'][i];
+        const active = i === 0;
+        return `<button onclick="PDV._selecionarTurno('${val}',this)" data-turno="${val}"
+          style="flex:1;padding:6px 2px;font-size:11px;border-radius:6px;border:1px solid var(--border);cursor:pointer;
+            background:${active?'var(--accent)':'var(--surface2)'};color:${active?'#fff':'var(--text2)'};font-weight:${active?'700':'400'}">${t}</button>`;
+      }).join('')}
+    </div>
+    <input type="hidden" id="ent-turno" value="qualquer">
   </div>
-</div>
-<div class="form-group">
-  <label class="form-label">Observação (instrução de entrega)</label>
-  <input class="input" id="ent-obs" placeholder="Ex: Entregar no portão lateral..." style="font-size:13px">
 </div>
 
 <div class="modal-actions">
   <button class="btn btn-ghost" onclick="PDV._voltarParaPagamento()">← Voltar</button>
-  <button class="btn btn-primary btn-lg" onclick="PDV._confirmarEntrega()">Confirmar Entrega →</button>
+  <button class="btn btn-primary btn-lg" onclick="PDV._confirmarEntrega()">🚚 Confirmar Entrega</button>
 </div>`, 'Agendar Entrega 🚚');
+  }
+
+  function _selecionarTurno(val, btn) {
+    document.getElementById('ent-turno').value = val;
+    document.querySelectorAll('#ent-turno-wrap button').forEach(b => {
+      b.style.background = 'var(--surface2)';
+      b.style.color = 'var(--text2)';
+      b.style.fontWeight = '400';
+    });
+    btn.style.background = 'var(--accent)';
+    btn.style.color = '#fff';
+    btn.style.fontWeight = '700';
   }
 
   async function _buscarCep(cep) {
@@ -791,6 +848,7 @@ ${!selectedClient ? `<div style="background:var(--red);color:#fff;padding:10px 1
   }
 
   function _confirmarEntrega() {
+    const telefone   = document.getElementById('ent-telefone')?.value.trim();
     const logradouro = document.getElementById('ent-logradouro')?.value.trim();
     const numero     = document.getElementById('ent-numero')?.value.trim();
     const bairro     = document.getElementById('ent-bairro')?.value.trim();
@@ -798,21 +856,29 @@ ${!selectedClient ? `<div style="background:var(--red);color:#fff;padding:10px 1
     const estado     = document.getElementById('ent-estado')?.value.trim();
     const data       = document.getElementById('ent-data')?.value;
 
+    if (!telefone) {
+      Toast.show('Informe o telefone / WhatsApp do cliente', 'warning');
+      document.getElementById('ent-telefone')?.focus();
+      return;
+    }
     if (!logradouro || !numero || !bairro || !cidade || !estado || !data) {
-      Toast.show('Preencha os campos obrigatórios: logradouro, número, bairro, cidade, estado e data', 'warning');
+      Toast.show('Preencha: logradouro, número, bairro, cidade, estado e data', 'warning');
       return;
     }
 
     const itens = _itensParaEntrega();
+    const telLimpo = telefone.replace(/\D/g, '');
     dadosEntrega = {
       cliente_id:       selectedClient?.remote_id || selectedClient?.id || null,
       cliente_nome:     selectedClient?.nome || null,
-      cliente_telefone: selectedClient?.telefone || null,
-      cliente_whatsapp: selectedClient?.telefone ? '55' + (selectedClient.telefone || '').replace(/\D/g,'') : null,
+      cliente_telefone: telefone,
+      cliente_whatsapp: telLimpo ? '55' + telLimpo : null,
+      cliente_documento:document.getElementById('ent-doc')?.value.trim() || null,
       cep:              document.getElementById('ent-cep')?.value.trim() || null,
       logradouro, numero,
       complemento:      document.getElementById('ent-complemento')?.value.trim() || null,
       bairro, cidade, estado,
+      referencia:       document.getElementById('ent-referencia')?.value.trim() || null,
       observacao:       document.getElementById('ent-obs')?.value.trim() || null,
       data_agendada:    data,
       turno:            document.getElementById('ent-turno')?.value || 'qualquer',
@@ -1430,7 +1496,7 @@ ${!selectedClient ? `<div style="background:var(--red);color:#fff;padding:10px 1
   return { render, init, onSearch, onSearchKey,
     selecionarProduto, fecharQtyPanel, qpKeyDown, confirmarQtyPreco,
     addToCart, changeQty, removeItem, clearCart,
-    toggleEntregar, entrarModoEdicao, cancelarEdicao,
+    toggleEntregar, _selecionarTurno, entrarModoEdicao, cancelarEdicao,
     setPayment, calcTroco, finalizarVenda, abrirPagamento, updateTotals,
     _selectPay, _calcTrocoModal, _confirmarPagamento,
     _abrirModalEntrega, _buscarCep, _voltarParaPagamento, _confirmarEntrega,

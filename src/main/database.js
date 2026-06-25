@@ -312,13 +312,15 @@ function runMigrations() {
       created_date TEXT, updated_date TEXT, synced_at TEXT
     )`,
     'ALTER TABLE vendas ADD COLUMN updated_at TEXT',
+    'ALTER TABLE entregas ADD COLUMN referencia TEXT',
+    'ALTER TABLE entregas ADD COLUMN cliente_documento TEXT',
     `CREATE TABLE IF NOT EXISTS entregas (
       id TEXT PRIMARY KEY, remote_id TEXT UNIQUE,
       empresa_id TEXT, empresa_nome TEXT, venda_id TEXT, venda_numero INTEGER,
       terminal_id TEXT, numero_local TEXT, cliente_id TEXT, cliente_nome TEXT,
-      cliente_telefone TEXT, cliente_whatsapp TEXT,
+      cliente_telefone TEXT, cliente_whatsapp TEXT, cliente_documento TEXT,
       cep TEXT, logradouro TEXT, numero TEXT, complemento TEXT,
-      bairro TEXT, cidade TEXT, estado TEXT, observacao TEXT,
+      bairro TEXT, cidade TEXT, estado TEXT, referencia TEXT, observacao TEXT,
       data_agendada TEXT, turno TEXT DEFAULT 'qualquer', itens TEXT,
       valor_total_entrega REAL DEFAULT 0,
       status TEXT DEFAULT 'pendente', transportadora TEXT, codigo_rastreio TEXT,
@@ -1147,18 +1149,20 @@ const entregas = {
     db.prepare(`
       INSERT OR REPLACE INTO entregas (
         id, remote_id, empresa_id, empresa_nome, venda_id, venda_numero,
-        terminal_id, numero_local, cliente_id, cliente_nome, cliente_telefone, cliente_whatsapp,
+        terminal_id, numero_local, cliente_id, cliente_nome,
+        cliente_telefone, cliente_whatsapp, cliente_documento,
         cep, logradouro, numero, complemento, bairro, cidade, estado,
-        observacao, data_agendada, turno, itens, valor_total_entrega,
+        referencia, observacao, data_agendada, turno, itens, valor_total_entrega,
         status, criado_por, created_at, sync_status
-      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     `).run(
       id, e.remote_id || null, e.empresa_id || null, e.empresa_nome || null,
       e.venda_id || null, e.venda_numero || null, e.terminal_id || null, e.numero_local || null,
-      e.cliente_id || null, e.cliente_nome || null, e.cliente_telefone || null, e.cliente_whatsapp || null,
+      e.cliente_id || null, e.cliente_nome || null,
+      e.cliente_telefone || null, e.cliente_whatsapp || null, e.cliente_documento || null,
       e.cep || null, e.logradouro || null, e.numero || null, e.complemento || null,
       e.bairro || null, e.cidade || null, e.estado || null,
-      e.observacao || null, e.data_agendada || null, e.turno || 'qualquer',
+      e.referencia || null, e.observacao || null, e.data_agendada || null, e.turno || 'qualquer',
       typeof e.itens === 'string' ? e.itens : JSON.stringify(e.itens || []),
       e.valor_total_entrega || 0, e.status || 'pendente',
       e.criado_por || null, e.created_at || now, 'pending'
