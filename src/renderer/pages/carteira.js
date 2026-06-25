@@ -209,7 +209,7 @@ const Carteira = (() => {
       onclick="Carteira.abrirContas(${JSON.stringify(c).replace(/"/g,'&quot;')})">
       💳 Contas a Receber
     </button>
-    ${c.total_a_receber > 0 ? `
+    ${c.total_a_receber > 0 && podePermissao('receber_contas_clientes') ? `
     <button class="btn btn-primary btn-sm" style="flex:1"
       onclick="Carteira.abrirReceber(${JSON.stringify(c).replace(/"/g,'&quot;')})">
       ✅ Receber
@@ -267,10 +267,10 @@ const Carteira = (() => {
             <div style="text-align:right;flex-shrink:0;margin-right:8px">
               <div style="font-weight:700;color:var(--accent)">R$ ${fmt(ct.valor)}</div>
             </div>
-            <button class="btn btn-ghost btn-sm" style="flex-shrink:0"
+            ${podePermissao('receber_contas_clientes') ? `<button class="btn btn-ghost btn-sm" style="flex-shrink:0"
               onclick="Carteira._receberConta('${ct.id}', ${ct.valor}, ${JSON.stringify(cliente).replace(/"/g,'&quot;')})">
               Receber
-            </button>
+            </button>` : ''}
           </div>`;
         }).join('');
 
@@ -288,7 +288,7 @@ const Carteira = (() => {
 <div style="max-height:380px;overflow-y:auto">${linhas}</div>
 <div class="modal-actions">
   <button class="btn btn-ghost" onclick="Modal.close()">Fechar</button>
-  ${contas.length > 0 ? `<button class="btn btn-primary" onclick="Carteira.abrirReceber(${JSON.stringify(cliente).replace(/"/g,'&quot;')})">✅ Receber tudo</button>` : ''}
+  ${contas.length > 0 && podePermissao('receber_contas_clientes') ? `<button class="btn btn-primary" onclick="Carteira.abrirReceber(${JSON.stringify(cliente).replace(/"/g,'&quot;')})">✅ Receber tudo</button>` : ''}
 </div>`, `Contas a Receber — ${cliente.nome}`);
   }
 
