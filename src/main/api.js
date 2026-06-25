@@ -137,6 +137,26 @@ async function registrarVenda(venda) {
   return post('/entities/Venda', payload);
 }
 
+async function editarVenda(remoteId, itens, totais, forma_pagamento) {
+  return put(`/entities/Venda/${remoteId}`, {
+    subtotal:        totais.subtotal,
+    desconto_total:  totais.desconto || 0,
+    total:           totais.total,
+    forma_pagamento: forma_pagamento,
+    valor_recebido:  totais.valor_pago || totais.total,
+    troco:           totais.troco || 0,
+    itens: itens.map(i => ({
+      produto_id:     i.produto_id,
+      produto_nome:   i.produto_nome,
+      produto_sku:    i.produto_sku || null,
+      quantidade:     i.quantidade,
+      preco_unitario: i.preco_unitario,
+      desconto:       i.desconto || 0,
+      subtotal:       i.total,
+    })),
+  });
+}
+
 async function cancelarVenda(remoteId, motivo) {
   return put(`/entities/Venda/${remoteId}`, { status: 'cancelada', motivo_cancelamento: motivo });
 }
@@ -467,6 +487,7 @@ module.exports = {
   pagarContaReceberParcial,
   usarCreditoEmConta,
   registrarVenda,
+  editarVenda,
   cancelarVenda,
   listarVendasCloud,
   getProduto,

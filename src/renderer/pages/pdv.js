@@ -7,6 +7,7 @@ const PDV = (() => {
   let valorPago = 0;
   let vendedorAtual = null; // { id, codigo, nome, comissao }
   let dadosEntrega = null;  // preenchido na etapa "Agendar Entrega"
+  let modoEdicao = null;    // { vendaId, numero, remote_id } — null = venda nova
 
   // ─── Render ────────────────────────────────────────────────────
   function render() {
@@ -54,6 +55,14 @@ const PDV = (() => {
     <div class="pdv-client-bar" id="pdv-client-bar">
       <span class="text-muted" style="font-size:12px">👤 Sem cliente</span>
       <button class="btn btn-ghost btn-sm" onclick="PDV.openClientSearch()">+ Selecionar</button>
+    </div>
+
+    <!-- Banner modo edição -->
+    <div id="pdv-edicao-banner" style="display:none;align-items:center;justify-content:space-between;
+      background:#b45309;color:#fff;padding:8px 16px;font-size:12px;font-weight:600;flex-shrink:0">
+      <span id="pdv-edicao-label">✏️ Editando Venda</span>
+      <button onclick="PDV.cancelarEdicao()" style="background:rgba(0,0,0,.25);border:none;color:#fff;
+        padding:3px 10px;border-radius:4px;cursor:pointer;font-size:11px">✕ Cancelar Edição</button>
     </div>
 
     <!-- Badge entregas -->
@@ -459,13 +468,16 @@ const PDV = (() => {
   }
 
   function clearCart() {
-    if (cart.length === 0) return;
+    if (cart.length === 0 && !modoEdicao) return;
     cart = [];
     selectedClient = null;
     vendedorAtual = null;
     dadosEntrega = null;
+    modoEdicao = null;
     payMethod = 'dinheiro';
     valorPago = 0;
+    const banner = document.getElementById('pdv-edicao-banner');
+    if (banner) banner.style.display = 'none';
     document.getElementById('pdv-desconto').value = 0;
     const imgWrap = document.getElementById('pdv-produto-img');
     if (imgWrap) imgWrap.style.display = 'none';
@@ -915,8 +927,23 @@ ${!selectedClient ? `<div style="background:var(--red);color:#fff;padding:10px 1
     };
 
     try {
-      const result = await window.pdv.vendas.registrar(venda);
-      if (eDevolucao) {
+      let result;
+      const emEdicao = modoEdicao;
+
+      if (emEdicao) {
+        // ── MODO EDIÇÃO: atualizar venda existente ────────────────
+        result = await window.pdv.vendas.editar(emEdicao.vendaId, venda.itens, {
+          subtotal:        venda.subtotal,
+          desconto:        desconto,
+          total:           total,
+          forma_pagamento: venda.forma_pagamento,
+          valor_pago:      venda.valor_pago,
+          troco:           venda.troco,
+        });
+        result = result || { numero: emEdicao.numero };
+        Toast.show(`Venda #${emEdicao.numero} atualizada!`, 'success');
+      } else if (eDevolucao) {
+        result = await window.pdv.vendas.registrar(venda);
         if (selectedClient) {
           const remoteId = selectedClient.remote_id || selectedClient.id;
           await window.pdv.creditos.criarCredito(remoteId, selectedClient.nome,
@@ -925,11 +952,12 @@ ${!selectedClient ? `<div style="background:var(--red);color:#fff;padding:10px 1
         }
         Toast.show(`Devolução #${result.numero} — Crédito R$ ${fmtMoney(valorDevolver)} na carteira`, 'success');
       } else {
+        result = await window.pdv.vendas.registrar(venda);
         Toast.show(`Venda #${result.numero} — ${vendedorAtual?.nome || 'OK'}`, 'success');
       }
 
-      // Registrar entrega se houver dados agendados
-      if (dadosEntrega && !eDevolucao) {
+      // Registrar entrega se houver dados agendados (apenas em venda nova, não edição)
+      if (dadosEntrega && !eDevolucao && !emEdicao) {
         try {
           const cfgAll = await window.pdv.config.getAll();
           await window.pdv.entregas.salvar({
@@ -1329,6 +1357,65 @@ ${!selectedClient ? `<div style="background:var(--red);color:#fff;padding:10px 1
     });
   }
 
+  function entrarModoEdicao(venda) {
+    // Limpar estado atual
+    cart = [];
+    dadosEntrega = null;
+    vendedorAtual = null;
+    payMethod = venda.forma_pagamento || 'dinheiro';
+    valorPago = 0;
+
+    // Guardar referência da venda original
+    modoEdicao = { vendaId: venda.id, numero: venda.numero, remote_id: venda.remote_id || null };
+
+    // Carregar itens no carrinho
+    for (const item of (venda.itens || [])) {
+      cart.push({
+        produto_id:     item.produto_id,
+        produto_nome:   item.produto_nome,
+        produto_sku:    item.produto_sku || '',
+        emoji:          '📦',
+        quantidade:     item.quantidade,
+        preco_unitario: item.preco_unitario,
+        preco_custo:    0,
+        desconto:       item.desconto || 0,
+        total:          item.total,
+        estoque_max:    9999,
+        devolucao:      item.quantidade < 0,
+        entregar:       false,
+      });
+    }
+
+    // Carregar cliente se existir
+    if (venda.cliente_id) {
+      window.pdv.clientes.getById(venda.cliente_id).then(c => {
+        if (c) { selectedClient = c; renderClientBar(); }
+      }).catch(() => {});
+    }
+
+    // Atualizar desconto
+    const elDesc = document.getElementById('pdv-desconto');
+    if (elDesc) elDesc.value = venda.desconto || 0;
+
+    // Mostrar banner
+    const banner = document.getElementById('pdv-edicao-banner');
+    const label  = document.getElementById('pdv-edicao-label');
+    if (banner) banner.style.display = 'flex';
+    if (label)  label.textContent = `✏️ Editando Venda #${venda.numero}`;
+
+    renderCart();
+    updateTotals();
+    Toast.show(`Venda #${venda.numero} carregada para edição`, 'info');
+  }
+
+  function cancelarEdicao() {
+    modoEdicao = null;
+    const banner = document.getElementById('pdv-edicao-banner');
+    if (banner) banner.style.display = 'none';
+    clearCart();
+    Toast.show('Edição cancelada', 'warning');
+  }
+
   function init() {
     SaudeVenda.init();
     initKeyboard();
@@ -1343,7 +1430,7 @@ ${!selectedClient ? `<div style="background:var(--red);color:#fff;padding:10px 1
   return { render, init, onSearch, onSearchKey,
     selecionarProduto, fecharQtyPanel, qpKeyDown, confirmarQtyPreco,
     addToCart, changeQty, removeItem, clearCart,
-    toggleEntregar,
+    toggleEntregar, entrarModoEdicao, cancelarEdicao,
     setPayment, calcTroco, finalizarVenda, abrirPagamento, updateTotals,
     _selectPay, _calcTrocoModal, _confirmarPagamento,
     _abrirModalEntrega, _buscarCep, _voltarParaPagamento, _confirmarEntrega,

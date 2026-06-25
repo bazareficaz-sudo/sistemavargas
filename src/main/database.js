@@ -311,6 +311,7 @@ function runMigrations() {
       forma_recebimento TEXT, referencia TEXT, observacao TEXT,
       created_date TEXT, updated_date TEXT, synced_at TEXT
     )`,
+    'ALTER TABLE vendas ADD COLUMN updated_at TEXT',
     `CREATE TABLE IF NOT EXISTS entregas (
       id TEXT PRIMARY KEY, remote_id TEXT UNIQUE,
       empresa_id TEXT, empresa_nome TEXT, venda_id TEXT, venda_numero INTEGER,
@@ -902,6 +903,46 @@ const vendas = {
 
     registrarVenda();
     return { id, numero };
+  },
+
+  editar(id, novosItens, novosDados) {
+    const venda = this.getById(id);
+    if (!venda || venda.status === 'cancelada') throw new Error('Venda não encontrada ou cancelada');
+    const now = new Date().toISOString();
+
+    const editarTx = db.transaction(() => {
+      // 1. Estornar estoque dos itens ORIGINAIS
+      for (const item of venda.itens) {
+        db.prepare('UPDATE estoque SET quantidade = quantidade + ? WHERE produto_id = ?')
+          .run(item.quantidade, item.produto_id);
+      }
+      // 2. Substituir itens
+      db.prepare('DELETE FROM venda_itens WHERE venda_id = ?').run(id);
+      for (const item of novosItens) {
+        db.prepare(`
+          INSERT INTO venda_itens (id, venda_id, produto_id, produto_nome, produto_sku, quantidade, preco_unitario, desconto, total)
+          VALUES (?,?,?,?,?,?,?,?,?)
+        `).run(uuidv4(), id, item.produto_id, item.produto_nome, item.produto_sku || null,
+          item.quantidade, item.preco_unitario, item.desconto || 0, item.total);
+        // 3. Baixar estoque dos itens NOVOS
+        db.prepare('UPDATE estoque SET quantidade = quantidade - ? WHERE produto_id = ?')
+          .run(item.quantidade, item.produto_id);
+      }
+      // 4. Recalcular totais e marcar para re-sync
+      const subtotal = novosItens.reduce((s, i) => s + i.total, 0);
+      const desconto = novosDados.desconto || 0;
+      const total = subtotal - desconto;
+      db.prepare(`
+        UPDATE vendas SET subtotal=?, desconto=?, total=?, forma_pagamento=?,
+          valor_pago=?, troco=?, sync_status='pending', updated_at=?
+        WHERE id=?
+      `).run(subtotal, desconto, total,
+        novosDados.forma_pagamento || venda.forma_pagamento,
+        novosDados.valor_pago || total, novosDados.troco || 0, now, id);
+    });
+
+    editarTx();
+    return this.getById(id);
   },
 
   listar(filtros = {}) {

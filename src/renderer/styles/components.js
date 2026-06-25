@@ -485,6 +485,7 @@ const Vendas = {
               : '<span class="badge badge-red" title="Erro na sincronização">✕ Erro</span>'}</td>
           <td style="display:flex;gap:4px">
             <button class="btn btn-ghost btn-sm" onclick="Vendas.imprimir('${v.id}')" title="Imprimir comprovante">🖨️</button>
+            ${v.status!=='cancelada' && podePermissao('editar_venda') ? `<button class="btn btn-ghost btn-sm" style="color:var(--accent)" onclick="Vendas.editarNoPDV('${v.id}')">✏️</button>` : ''}
             ${v.status!=='cancelada'?`<button class="btn btn-danger btn-sm" onclick="Vendas.cancelar('${v.id}')">Cancelar</button>`:''}
           </td>
         </tr>`).join('') || '<tr><td colspan="9"><div class="empty-state"><div class="icon">🧾</div><h3>Sem vendas nesta data</h3></div></td></tr>';
@@ -569,6 +570,15 @@ const Vendas = {
     this._printDados = dados;
     const preview = this._renderPreview(v.numero, itens, v.total, v.subtotal || v.total, v.desconto_total || 0, v.forma_pagamento, v.troco || 0, v.vendedor_nome, v.cliente_nome, v.created_date);
     Modal.open(`${preview}<div class="modal-actions"><button class="btn btn-ghost" onclick="Modal.close()">Fechar</button><button class="btn btn-primary" onclick="Vendas._confirmarImpressao()">🖨️ Imprimir</button></div>`, `Comprovante #${v.numero}`, '');
+  },
+
+  async editarNoPDV(id) {
+    const venda = await window.pdv.vendas.getById(id);
+    if (!venda) { Toast.show('Venda não encontrada', 'error'); return; }
+    if (venda.status === 'cancelada') { Toast.show('Não é possível editar venda cancelada', 'warning'); return; }
+    // Carregar venda no PDV em modo de edição
+    App.navigate('pdv');
+    setTimeout(() => PDV.entrarModoEdicao(venda), 100);
   },
 
   async cancelar(id) {

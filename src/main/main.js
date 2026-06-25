@@ -162,6 +162,19 @@ ipcMain.handle('vendas:registrar', (_, venda) => {
 ipcMain.handle('vendas:listar', (_, filtros) => db.vendas.listar(filtros));
 ipcMain.handle('vendas:getById', (_, id) => db.vendas.getById(id));
 ipcMain.handle('vendas:cancelar', (_, id, motivo) => db.vendas.cancelar(id, motivo));
+ipcMain.handle('vendas:editar', async (_, id, novosItens, novosDados) => {
+  const vendaAtualizada = db.vendas.editar(id, novosItens, novosDados);
+  // Re-sincronizar com Base44 se tiver remote_id
+  if (vendaAtualizada?.remote_id) {
+    try {
+      await api.editarVenda(vendaAtualizada.remote_id, novosItens, novosDados, novosDados.forma_pagamento);
+    } catch (err) {
+      console.warn('[VENDA] Erro ao sincronizar edição:', err.message);
+    }
+  }
+  setImmediate(() => sync.syncFila(mainWindow));
+  return vendaAtualizada;
+});
 ipcMain.handle('vendas:totaisHoje', () => db.vendas.totaisHoje());
 ipcMain.handle('vendas:listarCloud', (_, data) => api.listarVendasCloud(data));
 
