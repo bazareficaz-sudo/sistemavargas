@@ -380,6 +380,8 @@ async function autenticarPDV(login, senha) {
     const u = usuarios[0];
     if (u.senha_hash !== senhaHash) return { erro: 'Senha incorreta' };
 
+    // Base44 armazena configs de empresa/estoque dentro do objeto permissoes
+    const perms = u.permissoes || {};
     const usuario = {
       id:                  u.id,
       nome:                u.nome || u.login,
@@ -387,24 +389,48 @@ async function autenticarPDV(login, senha) {
       cargo:               u.cargo || 'Operador',
       empresa_id:          u.empresa_id,
       empresa_nome:        u.empresa_nome || 'Bazar Eficaz',
-      // Empresa fiscal (NFC-e/NF-e)
-      empresa_fiscal_id:   u.empresa_fiscal_id   || u.empresa_id,
-      empresa_fiscal_nome: u.empresa_fiscal_nome || u.empresa_nome || 'Bazar Eficaz',
-      // Empresa e depósito de estoque
-      empresa_estoque_id:  u.empresa_estoque_id  || u.empresa_id,
-      empresa_estoque_nome:u.empresa_estoque_nome|| u.empresa_nome || 'Bazar Eficaz',
-      deposito_id:         u.deposito_id         || null,
-      deposito_nome:       u.deposito_nome        || null,
-      unificar_estoque:    u.unificar_estoque     || false,
-      permissoes:          u.permissoes           || {},
+      // Empresa fiscal: campo empresa_emissao_fiscal_id dentro de permissoes
+      empresa_fiscal_id:   perms.empresa_emissao_fiscal_id || u.empresa_fiscal_id || u.empresa_id,
+      empresa_fiscal_nome: u.empresa_fiscal_nome || null,
+      // Empresa de estoque: campo estoque_empresa_id dentro de permissoes
+      empresa_estoque_id:  perms.estoque_empresa_id  || u.empresa_estoque_id  || u.empresa_id,
+      empresa_estoque_nome:u.empresa_estoque_nome || null,
+      // Depósito: campo estoque_deposito_id dentro de permissoes
+      deposito_id:         perms.estoque_deposito_id || u.deposito_id || null,
+      deposito_nome:       u.deposito_nome || null,
+      unificar_estoque:    perms.unificar_estoque || u.unificar_estoque || false,
+      permissoes:          perms,
     };
+    // Buscar nomes das empresas e depósito pelo ID (em paralelo, sem bloquear login)
+    try {
+      const [resFiscal, resEstoque, resDep] = await Promise.allSettled([
+        usuario.empresa_fiscal_id && usuario.empresa_fiscal_id !== usuario.empresa_id
+          ? get(`/entities/Empresa/${usuario.empresa_fiscal_id}`) : Promise.resolve(null),
+        usuario.empresa_estoque_id && usuario.empresa_estoque_id !== usuario.empresa_id
+          ? get(`/entities/Empresa/${usuario.empresa_estoque_id}`) : Promise.resolve(null),
+        usuario.deposito_id
+          ? get(`/entities/Deposito/${usuario.deposito_id}`) : Promise.resolve(null),
+      ]);
+      if (resFiscal.status === 'fulfilled' && resFiscal.value?.nome)
+        usuario.empresa_fiscal_nome = resFiscal.value.nome;
+      else
+        usuario.empresa_fiscal_nome = usuario.empresa_fiscal_id === usuario.empresa_id
+          ? usuario.empresa_nome : usuario.empresa_fiscal_id;
+      if (resEstoque.status === 'fulfilled' && resEstoque.value?.nome)
+        usuario.empresa_estoque_nome = resEstoque.value.nome;
+      else
+        usuario.empresa_estoque_nome = usuario.empresa_estoque_id === usuario.empresa_id
+          ? usuario.empresa_nome : usuario.empresa_estoque_id;
+      if (resDep.status === 'fulfilled' && resDep.value?.nome)
+        usuario.deposito_nome = resDep.value.nome;
+    } catch {}
+
     store.set('auth.token', u.id);
     store.set('auth.usuario', usuario);
-    // Atalhos rápidos usados em vários lugares
-    store.set('auth.empresa_id',          usuario.empresa_id);
-    store.set('auth.empresa_fiscal_id',   usuario.empresa_fiscal_id);
-    store.set('auth.empresa_estoque_id',  usuario.empresa_estoque_id);
-    store.set('auth.deposito_id',         usuario.deposito_id);
+    store.set('auth.empresa_id',         usuario.empresa_id);
+    store.set('auth.empresa_fiscal_id',  usuario.empresa_fiscal_id);
+    store.set('auth.empresa_estoque_id', usuario.empresa_estoque_id);
+    store.set('auth.deposito_id',        usuario.deposito_id);
     return { token: u.id, usuario };
   } catch (err) {
     return { erro: 'Erro de conexão: ' + err.message };
