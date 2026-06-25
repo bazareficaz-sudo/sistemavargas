@@ -278,7 +278,7 @@ const Clientes = {
         <td><span style="color:${disponivel > 0 ? 'var(--green)' : disponivel === 0 && c.limite_credito > 0 ? 'var(--red)' : 'var(--text2)'}">R$ ${fmtMoney(disponivel)}</span></td>
         <td>
           <div class="flex gap-8">
-            ${emAberto > 0 ? `<button class="btn btn-primary btn-sm" onclick="Clientes.verConta('${c.remote_id || c.id}','${c.nome}','${c.id}')">Receber</button>` : ''}
+            ${emAberto > 0 && podePermissao('receber_contas_clientes') ? `<button class="btn btn-primary btn-sm" onclick="Clientes.verConta('${c.remote_id || c.id}','${c.nome}','${c.id}')">Receber</button>` : ''}
             <button class="btn btn-ghost btn-sm" onclick="Clientes.verConta('${c.remote_id || c.id}','${c.nome}','${c.id}')">Ver Conta</button>
           </div>
         </td>
@@ -340,14 +340,14 @@ const Clientes = {
     </div>
   </div>
   ${cr.observacao ? `<div style="font-size:11px;color:var(--text2);margin-bottom:8px">${cr.observacao}</div>` : ''}
-  <div class="flex gap-8" style="margin-top:8px">
+  ${podePermissao('receber_contas_clientes') ? `<div class="flex gap-8" style="margin-top:8px">
     <input class="input" type="number" step="0.01" min="0.01" max="${cr.saldo_atual}"
       id="rec-val-${cr.id}" value="${fmtMoney(cr.saldo_atual).replace(',','.')}"
       style="flex:1;padding:6px 10px;font-size:13px" placeholder="Valor a receber">
     <button class="btn btn-primary btn-sm" onclick="Clientes._receberItem('${cr.id}',${cr.saldo_atual},'${remoteId}','${nome}','${localId}')">
       Receber
     </button>
-  </div>
+  </div>` : ''}
 </div>`).join('');
 
     Modal.open(`
