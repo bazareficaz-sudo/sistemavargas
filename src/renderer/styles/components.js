@@ -1212,13 +1212,14 @@ const Config = {
 
   <div class="card" style="margin-bottom:16px">
     <div style="font-size:13px;font-weight:600;margin-bottom:14px">🧾 Fiscal (NFC-e / FocusNFe)</div>
+    <!-- Empresa fiscal da sessão (somente leitura — vem do login) -->
+    <div id="cfg-fiscal-empresa-info" style="background:var(--bg3);border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:12px;color:var(--text2)">
+      Carregando dados da empresa fiscal...
+    </div>
     <div class="form-group">
       <label class="form-label">Token FocusNFe</label>
       <input class="input" id="cfg-fiscal-token" type="password" placeholder="Token da API FocusNFe">
-    </div>
-    <div class="form-group">
-      <label class="form-label">CNPJ da Empresa Fiscal</label>
-      <input class="input" id="cfg-fiscal-cnpj" placeholder="00.000.000/0000-00">
+      <div style="font-size:11px;color:var(--text3);margin-top:4px">Informe o token de homologação ou produção do FocusNFe</div>
     </div>
     <div class="form-group">
       <label class="form-label">Ambiente</label>
@@ -1284,12 +1285,29 @@ const Config = {
       Última sync: ${status.ultima_sync ? new Date(status.ultima_sync).toLocaleString('pt-BR') : 'Nunca'}<br>
       Pendentes: ${status.pendentes || 0} operações`;
 
-    // Fiscal
-    if (f('cfg-fiscal-token'))   f('cfg-fiscal-token').value   = cfg['config.fiscal_token']   || '';
-    if (f('cfg-fiscal-cnpj'))    f('cfg-fiscal-cnpj').value    = cfg['config.fiscal_cnpj']    || '';
-    if (f('cfg-fiscal-ambiente'))f('cfg-fiscal-ambiente').value= cfg['config.fiscal_ambiente'] || 'homologacao';
+    // Fiscal — token manual + ambiente; CNPJ/empresa vêm do login (Base44)
+    if (f('cfg-fiscal-token'))    f('cfg-fiscal-token').value    = cfg['config.fiscal_token']    || '';
+    if (f('cfg-fiscal-ambiente')) f('cfg-fiscal-ambiente').value = cfg['config.fiscal_ambiente'] || 'homologacao';
 
+    // Painel informativo da empresa fiscal (dados da sessão)
     const user = cfg['auth.usuario'];
+    const infoEl = f('cfg-fiscal-empresa-info');
+    if (infoEl) {
+      if (user?.empresa_fiscal_cnpj) {
+        infoEl.innerHTML = `
+          <div style="display:grid;gap:4px">
+            <div style="font-size:10px;color:var(--text3);font-weight:700;letter-spacing:.5px">EMPRESA FISCAL (do login Base44)</div>
+            <div><strong>${user.empresa_fiscal_nome || '-'}</strong></div>
+            <div style="font-family:monospace">CNPJ: ${user.empresa_fiscal_cnpj}</div>
+            ${user.empresa_fiscal_ie ? `<div>IE: ${user.empresa_fiscal_ie}</div>` : ''}
+            <div style="color:var(--text3);font-size:11px">${user.empresa_fiscal_regime || ''} · ${user.empresa_fiscal_uf || ''} · Série NFC-e: ${user.nfce_serie || '001'} · ${user.nfce_ambiente || 'homologacao'}</div>
+            ${user.nfce_habilitada ? '<div style="color:var(--green);font-size:11px">✅ NFC-e habilitada no Base44</div>' : '<div style="color:var(--red);font-size:11px">⚠️ NFC-e não habilitada no Base44 (ConfigFiscal)</div>'}
+          </div>`;
+      } else {
+        infoEl.innerHTML = `<span style="color:var(--red);font-size:12px">⚠️ Dados fiscais não encontrados — faça logout e login novamente para recarregar do Base44</span>`;
+      }
+    }
+
     const ss = f('cfg-session');
     if (ss && user) {
       const emFiscal = user.empresa_fiscal_nome || user.empresa_nome || '-';
@@ -1306,10 +1324,8 @@ const Config = {
 
   async salvarFiscal() {
     const token   = document.getElementById('cfg-fiscal-token')?.value.trim();
-    const cnpj    = document.getElementById('cfg-fiscal-cnpj')?.value.replace(/\D/g, '');
     const ambiente= document.getElementById('cfg-fiscal-ambiente')?.value;
     await window.pdv.config.set('config.fiscal_token',   token);
-    await window.pdv.config.set('config.fiscal_cnpj',    cnpj);
     await window.pdv.config.set('config.fiscal_ambiente',ambiente);
     Toast.show('Configuração fiscal salva!', 'success');
   },
