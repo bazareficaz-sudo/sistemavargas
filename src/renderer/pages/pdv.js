@@ -612,7 +612,7 @@ const PDV = (() => {
 <div class="modal-actions">
   <button class="btn btn-ghost" onclick="Modal.close()">ESC · Cancelar</button>
   <button class="btn btn-primary btn-lg" onclick="PDV._confirmarPagamento()">↵ Enter · Confirmar</button>
-</div>`, 'Pagamento — F9');
+</div>`, dadosEntrega ? 'Pagamento — Etapa 2 de 3' : 'Pagamento — F9');
   }
 
   function _trocoHtml(total) {
@@ -672,13 +672,8 @@ const PDV = (() => {
       ? parseFloat(document.getElementById('modal-valor-pago')?.value || total)
       : total;
 
-    // Se há itens para entrega → etapa de agendamento antes do vendedor
-    if (_itensParaEntrega().length > 0) {
-      _abrirModalEntrega();
-    } else {
-      dadosEntrega = null;
-      _abrirModalVendedor();
-    }
+    dadosEntrega = dadosEntrega || null;
+    _abrirModalVendedor();
   }
 
   // Etapa 2b (condicional): Agendar Entrega
@@ -712,8 +707,8 @@ const PDV = (() => {
     Modal.open(`
 <div style="margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--border)">
   <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-    <span style="background:var(--accent-bg);color:var(--accent);border-radius:20px;padding:2px 10px;font-size:11px;font-weight:700">ETAPA 2 DE 3</span>
-    <span style="font-size:11px;color:var(--text3)">Pagamento ✓ → 🚚 Entrega → Vendedor</span>
+    <span style="background:var(--accent-bg);color:var(--accent);border-radius:20px;padding:2px 10px;font-size:11px;font-weight:700">ETAPA 1 DE 3</span>
+    <span style="font-size:11px;color:var(--text3)">🚚 Entrega → Pagamento → Vendedor</span>
   </div>
   <div style="background:var(--surface2);border-radius:8px;padding:10px;margin-bottom:8px">
     ${itensList}
@@ -810,8 +805,8 @@ const PDV = (() => {
 </div>
 
 <div class="modal-actions">
-  <button class="btn btn-ghost" onclick="PDV._voltarParaPagamento()">← Voltar</button>
-  <button class="btn btn-primary btn-lg" onclick="PDV._confirmarEntrega()">🚚 Confirmar Entrega</button>
+  <button class="btn btn-ghost" onclick="PDV._voltarParaPagamento()">← Voltar ao Carrinho</button>
+  <button class="btn btn-primary btn-lg" onclick="PDV._confirmarEntrega()">Confirmar → Pagamento</button>
 </div>`, 'Agendar Entrega 🚚');
   }
 
@@ -844,7 +839,7 @@ const PDV = (() => {
   }
 
   function _voltarParaPagamento() {
-    abrirPagamento();
+    Modal.close();
   }
 
   function _confirmarEntrega() {
@@ -893,7 +888,8 @@ const PDV = (() => {
       valor_total_entrega: itens.reduce((s, i) => s + i.total, 0),
     };
 
-    _abrirModalVendedor();
+    // Entrega confirmada → seguir para pagamento
+    await abrirPagamento();
   }
 
   // Etapa 3: modal do código do vendedor
@@ -1093,7 +1089,15 @@ const PDV = (() => {
   // Mantido para compatibilidade (não usado mais na UI mas chamado internamente)
   function setPayment(method) { payMethod = method; }
   function calcTroco() {}
-  async function finalizarVenda() { await abrirPagamento(); }
+  async function finalizarVenda() {
+    if (cart.length === 0) { Toast.show('Carrinho vazio', 'warning'); return; }
+    // Se há itens para entrega → confirmar entrega ANTES do pagamento
+    if (_itensParaEntrega().length > 0) {
+      _abrirModalEntrega();
+    } else {
+      await abrirPagamento();
+    }
+  }
 
   function renderComprovante(numero, venda) {
     const itensVenda = venda.itens.filter(i => i.quantidade > 0);
