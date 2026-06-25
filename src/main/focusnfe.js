@@ -18,7 +18,9 @@ function getBaseUrl() {
 }
 
 function getToken() {
-  return store.get('config.fiscal_token') || '';
+  // Token da empresa fiscal (Base44) tem prioridade sobre o configurado manualmente
+  const usuario = store.get('auth.usuario') || {};
+  return usuario.empresa_fiscal_token_focusnfe || store.get('config.fiscal_token') || '';
 }
 
 function authHeader(token) {
@@ -31,6 +33,19 @@ function authHeader(token) {
 function montarPayload(venda) {
   const cfg = store.store;
   const usuario = cfg['auth.usuario'] || {};
+
+  // Dados da empresa fiscal (vindos do Base44 no login)
+  const cnpj       = usuario.empresa_fiscal_cnpj          || store.get('config.fiscal_cnpj') || '';
+  const ie         = usuario.empresa_fiscal_ie             || null;
+  const regime     = usuario.empresa_fiscal_regime         || 'simples_nacional';
+  const uf         = usuario.empresa_fiscal_uf             || null;
+  const cep        = usuario.empresa_fiscal_cep            || null;
+  const logradouro = usuario.empresa_fiscal_logradouro     || null;
+  const numero     = usuario.empresa_fiscal_numero         || 'S/N';
+  const bairro     = usuario.empresa_fiscal_bairro         || null;
+  const municipio  = usuario.empresa_fiscal_municipio      || null;
+  const codMunicipio = usuario.empresa_fiscal_cod_municipio || null;
+  const telefone   = usuario.empresa_fiscal_telefone       || null;
 
   // Identificação
   const now = new Date().toISOString().slice(0, 19) + '-03:00';
@@ -75,8 +90,18 @@ function montarPayload(venda) {
   }];
 
   const payload = {
-    // Emitente (usa CNPJ da empresa fiscal do operador)
-    cnpj_emitente: usuario.empresa_fiscal_cnpj || store.get('config.fiscal_cnpj') || '',
+    // Emitente — dados completos da empresa fiscal
+    cnpj_emitente: cnpj,
+    ...(ie ? { inscricao_estadual_emitente: ie } : { inscricao_estadual_emitente: 'ISENTO' }),
+    ...(uf         ? { uf_emitente:          uf         } : {}),
+    ...(cep        ? { cep_emitente:         cep.replace(/\D/g,'') } : {}),
+    ...(logradouro ? { logradouro_emitente:  logradouro } : {}),
+    ...(numero     ? { numero_emitente:      numero     } : {}),
+    ...(bairro     ? { bairro_emitente:      bairro     } : {}),
+    ...(municipio  ? { municipio_emitente:   municipio  } : {}),
+    ...(codMunicipio ? { codigo_municipio_emitente: codMunicipio } : {}),
+    ...(telefone   ? { telefone_emitente:    telefone.replace(/\D/g,'') } : {}),
+    regime_tributario_emitente: regime === 'simples_nacional' ? 1 : regime === 'lucro_presumido' ? 3 : 3,
 
     // Natureza e datas
     natureza_operacao:  'VENDA AO CONSUMIDOR',

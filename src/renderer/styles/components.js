@@ -1298,7 +1298,7 @@ const Config = {
       ss.innerHTML = `
         <div style="display:grid;gap:6px">
           <div><span style="color:var(--text3);font-size:11px">OPERADOR</span><br><strong>${user.nome || '-'}</strong> · ${user.cargo || 'PDV'}</div>
-          <div><span style="color:var(--text3);font-size:11px">EMPRESA FISCAL (NFC-e / NF-e)</span><br><strong>${emFiscal}</strong></div>
+          <div><span style="color:var(--text3);font-size:11px">EMPRESA FISCAL (NFC-e / NF-e)</span><br><strong>${emFiscal}</strong>${user.empresa_fiscal_cnpj ? ` <span style="color:var(--text3);font-size:11px">· CNPJ ${user.empresa_fiscal_cnpj}</span>` : ''}</div>
           <div><span style="color:var(--text3);font-size:11px">ESTOQUE / DEPÓSITO</span><br><strong>${emEstoque}</strong> · ${dep}${user.unificar_estoque ? ' <span style="color:var(--accent);font-size:10px">(unificado)</span>' : ''}</div>
         </div>`;
     }
