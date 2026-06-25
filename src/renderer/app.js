@@ -4,17 +4,12 @@ const App = (() => {
 
   // ─── Init ────────────────────────────────────────────────────
   async function init() {
-    // Checar se está configurado/logado
-    const token = await window.pdv.config.get('auth.token');
-    const appId = await window.pdv.config.get('config.app_id');
+    // Sempre exigir login ao abrir o PDV
+    renderLogin();
+    return;
+  }
 
-    if (!appId || !token) {
-      renderLogin();
-      return;
-    }
-
-    showApp();
-    navigate('pdv');
+  async function _initApp() {
     setupSyncListener();
     setupUpdateListener();
     await refreshSyncStatus();
@@ -33,6 +28,7 @@ const App = (() => {
     // Mostrar Carteira no menu apenas para quem tem permissão
     const navCarteira = document.getElementById('nav-carteira');
     if (navCarteira) navCarteira.style.display = podePermissao('receber_contas_clientes') ? 'flex' : 'none';
+    _initApp();
   }
 
   async function renderNavUser() {
