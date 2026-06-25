@@ -111,6 +111,7 @@ async function registrarVenda(venda) {
     empresa_id: EMPRESA_ID,
     numero: venda.numero,
     cliente_id: venda.cliente_remote_id || null,
+    cliente_nome: venda.cliente_nome || null,
     status: venda.status || 'finalizada',
     subtotal: venda.subtotal,
     desconto_total: venda.desconto || 0,
