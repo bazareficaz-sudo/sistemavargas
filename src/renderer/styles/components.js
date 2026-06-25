@@ -447,7 +447,7 @@ const Vendas = {
             <td class="td-mono td-main">#${v.numero || '—'}</td>
             <td style="font-size:12px">${v.created_date ? new Date(v.created_date).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) : '—'}</td>
             <td style="font-size:11px;color:var(--text3)">${v.terminal_id || '—'}</td>
-            <td>${v.cliente_nome || v.cliente_id || '<span style="color:var(--text3)">—</span>'}</td>
+            <td>${v.cliente_nome || '<span style="color:var(--text3)">—</span>'}</td>
             <td><span class="badge ${v.forma_pagamento==='pix'?'badge-green':v.forma_pagamento==='dinheiro'?'badge-yellow':'badge-blue'}">${v.forma_pagamento || '—'}</span></td>
             <td class="td-price">R$ ${fmtMoney(v.total)}</td>
             <td>${v.status==='cancelada'?'<span class="badge badge-red">Cancelada</span>':'<span class="badge badge-green">Concluída</span>'}</td>
