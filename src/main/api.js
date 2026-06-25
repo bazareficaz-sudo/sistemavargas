@@ -162,11 +162,16 @@ async function cancelarVenda(remoteId, motivo) {
 }
 
 async function listarVendasCloud(data) {
-  const inicio = `${data}T00:00:00.000Z`;
-  const fim    = `${data}T23:59:59.999Z`;
-  const q = { empresa_id: EMPRESA_ID, created_date: { $gte: inicio, $lte: fim } };
-  const res = await get('/entities/Venda', { q, limit: 500, sort: JSON.stringify({ created_date: -1 }) });
-  return Array.isArray(res) ? res : (res.results || res.data || []);
+  // Busca sem filtro de data — filtra localmente depois (mais compatível com Base44)
+  const q = { empresa_id: EMPRESA_ID };
+  const res = await get('/entities/Venda', { q: JSON.stringify(q), limit: 500, sort: JSON.stringify({ created_date: -1 }) });
+  const lista = Array.isArray(res) ? res : (res.results || res.data || []);
+  console.log('[CLOUD] Total vendas recebidas:', lista.length, '| campos ex:', lista[0] ? Object.keys(lista[0]).join(',') : 'vazio');
+  // Filtrar pela data localmente — aceita created_date ou created_at
+  return lista.filter(v => {
+    const dt = v.created_date || v.created_at || '';
+    return dt.startsWith(data);
+  });
 }
 
 // ─── Vendedores ───────────────────────────────────────────────────────
