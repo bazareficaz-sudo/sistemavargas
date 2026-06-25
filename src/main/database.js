@@ -237,6 +237,46 @@ function createTables() {
       sync_status TEXT DEFAULT 'pending'
     );
 
+    -- Entregas
+    CREATE TABLE IF NOT EXISTS entregas (
+      id TEXT PRIMARY KEY,
+      remote_id TEXT UNIQUE,
+      empresa_id TEXT,
+      empresa_nome TEXT,
+      venda_id TEXT,
+      venda_numero INTEGER,
+      terminal_id TEXT,
+      numero_local TEXT,
+      cliente_id TEXT,
+      cliente_nome TEXT,
+      cliente_telefone TEXT,
+      cliente_whatsapp TEXT,
+      cep TEXT,
+      logradouro TEXT,
+      numero TEXT,
+      complemento TEXT,
+      bairro TEXT,
+      cidade TEXT,
+      estado TEXT,
+      observacao TEXT,
+      data_agendada TEXT,
+      turno TEXT DEFAULT 'qualquer',
+      itens TEXT,
+      valor_total_entrega REAL DEFAULT 0,
+      status TEXT DEFAULT 'pendente',
+      transportadora TEXT,
+      codigo_rastreio TEXT,
+      motorista_nome TEXT,
+      veiculo_placa TEXT,
+      observacao_entrega TEXT,
+      data_saida TEXT,
+      data_entrega TEXT,
+      criado_por TEXT,
+      created_at TEXT NOT NULL,
+      synced_at TEXT,
+      sync_status TEXT DEFAULT 'pending'
+    );
+
     -- Config local
     CREATE TABLE IF NOT EXISTS config (
       chave TEXT PRIMARY KEY,
@@ -270,6 +310,20 @@ function runMigrations() {
       status TEXT DEFAULT 'pendente', vencimento TEXT, data_pagamento TEXT,
       forma_recebimento TEXT, referencia TEXT, observacao TEXT,
       created_date TEXT, updated_date TEXT, synced_at TEXT
+    )`,
+    `CREATE TABLE IF NOT EXISTS entregas (
+      id TEXT PRIMARY KEY, remote_id TEXT UNIQUE,
+      empresa_id TEXT, empresa_nome TEXT, venda_id TEXT, venda_numero INTEGER,
+      terminal_id TEXT, numero_local TEXT, cliente_id TEXT, cliente_nome TEXT,
+      cliente_telefone TEXT, cliente_whatsapp TEXT,
+      cep TEXT, logradouro TEXT, numero TEXT, complemento TEXT,
+      bairro TEXT, cidade TEXT, estado TEXT, observacao TEXT,
+      data_agendada TEXT, turno TEXT DEFAULT 'qualquer', itens TEXT,
+      valor_total_entrega REAL DEFAULT 0,
+      status TEXT DEFAULT 'pendente', transportadora TEXT, codigo_rastreio TEXT,
+      motorista_nome TEXT, veiculo_placa TEXT, observacao_entrega TEXT,
+      data_saida TEXT, data_entrega TEXT, criado_por TEXT,
+      created_at TEXT NOT NULL, synced_at TEXT, sync_status TEXT DEFAULT 'pending'
     )`,
   ];
   for (const sql of migrations) {
@@ -1044,6 +1098,70 @@ const faltas = {
   },
 };
 
+// ─── ENTREGAS ────────────────────────────────────────────────────
+const entregas = {
+  salvar(e) {
+    const id = e.id || uuidv4();
+    const now = new Date().toISOString();
+    db.prepare(`
+      INSERT OR REPLACE INTO entregas (
+        id, remote_id, empresa_id, empresa_nome, venda_id, venda_numero,
+        terminal_id, numero_local, cliente_id, cliente_nome, cliente_telefone, cliente_whatsapp,
+        cep, logradouro, numero, complemento, bairro, cidade, estado,
+        observacao, data_agendada, turno, itens, valor_total_entrega,
+        status, criado_por, created_at, sync_status
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    `).run(
+      id, e.remote_id || null, e.empresa_id || null, e.empresa_nome || null,
+      e.venda_id || null, e.venda_numero || null, e.terminal_id || null, e.numero_local || null,
+      e.cliente_id || null, e.cliente_nome || null, e.cliente_telefone || null, e.cliente_whatsapp || null,
+      e.cep || null, e.logradouro || null, e.numero || null, e.complemento || null,
+      e.bairro || null, e.cidade || null, e.estado || null,
+      e.observacao || null, e.data_agendada || null, e.turno || 'qualquer',
+      typeof e.itens === 'string' ? e.itens : JSON.stringify(e.itens || []),
+      e.valor_total_entrega || 0, e.status || 'pendente',
+      e.criado_por || null, e.created_at || now, 'pending'
+    );
+    return { ...e, id };
+  },
+
+  getById(id) {
+    const r = db.prepare('SELECT * FROM entregas WHERE id = ?').get(id);
+    if (r && r.itens) { try { r.itens = JSON.parse(r.itens); } catch {} }
+    return r;
+  },
+
+  listar(filtros = {}) {
+    let where = '1=1';
+    const params = [];
+    if (filtros.empresa_id) { where += ' AND empresa_id = ?'; params.push(filtros.empresa_id); }
+    if (filtros.status)     { where += ' AND status = ?';     params.push(filtros.status); }
+    const rows = db.prepare(`SELECT * FROM entregas WHERE ${where} ORDER BY created_at DESC LIMIT 200`).all(...params);
+    return rows.map(r => { try { r.itens = JSON.parse(r.itens); } catch {} return r; });
+  },
+
+  atualizar(id, dados) {
+    const sets = Object.keys(dados).map(k => `${k} = ?`).join(', ');
+    db.prepare(`UPDATE entregas SET ${sets} WHERE id = ?`).run(...Object.values(dados), id);
+  },
+
+  upsertRemote(remote) {
+    const existing = db.prepare('SELECT id FROM entregas WHERE remote_id = ?').get(remote.id);
+    if (existing) {
+      db.prepare(`UPDATE entregas SET status=?, transportadora=?, codigo_rastreio=?,
+        motorista_nome=?, veiculo_placa=?, data_saida=?, data_entrega=?, synced_at=?
+        WHERE remote_id=?`).run(
+        remote.status, remote.transportadora||null, remote.codigo_rastreio||null,
+        remote.motorista_nome||null, remote.veiculo_placa||null,
+        remote.data_saida||null, remote.data_entrega||null,
+        new Date().toISOString(), remote.id
+      );
+    } else {
+      this.salvar({ ...remote, id: uuidv4(), remote_id: remote.id, created_at: remote.created_date || new Date().toISOString() });
+    }
+  },
+};
+
 // ─── SYNC QUEUE ──────────────────────────────────────────────────
 const syncQueue = {
   getPendentes() {
@@ -1074,5 +1192,6 @@ module.exports = {
   vendas,
   estoque,
   faltas,
+  entregas,
   sync: syncQueue
 };

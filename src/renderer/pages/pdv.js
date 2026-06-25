@@ -6,6 +6,7 @@ const PDV = (() => {
   let payMethod = 'dinheiro';
   let valorPago = 0;
   let vendedorAtual = null; // { id, codigo, nome, comissao }
+  let dadosEntrega = null;  // preenchido na etapa "Agendar Entrega"
 
   // ─── Render ────────────────────────────────────────────────────
   function render() {
@@ -54,6 +55,12 @@ const PDV = (() => {
       <span class="text-muted" style="font-size:12px">👤 Sem cliente</span>
       <button class="btn btn-ghost btn-sm" onclick="PDV.openClientSearch()">+ Selecionar</button>
     </div>
+
+    <!-- Badge entregas -->
+    <div id="pdv-entrega-badge" style="display:none;align-items:center;
+      background:var(--accent-bg);border-top:1px solid var(--accent);
+      padding:6px 16px;font-size:12px;color:var(--accent);font-weight:600;
+      flex-shrink:0"></div>
 
     <!-- Itens do carrinho -->
     <div class="pdv-cart" id="pdv-cart">
@@ -185,6 +192,8 @@ const PDV = (() => {
 .cart-price{font-family:'Syne',sans-serif;font-weight:700;color:var(--accent);white-space:nowrap;margin-left:4px}
 .remove-btn{color:var(--text3);cursor:pointer;padding:4px;border-radius:4px;border:none;background:transparent;font-size:14px}
 .remove-btn:hover{color:var(--red)}
+.cart-item-entrega{border-color:var(--accent)!important;background:var(--accent-bg)!important}
+.entrega-ativo{border-color:var(--accent)!important;background:var(--accent-bg)!important;color:var(--accent)!important}
 
 .pdv-right{display:flex;flex-direction:column;background:var(--bg2);overflow:hidden}
 .pdv-totals{padding:18px 20px;border-bottom:1px solid var(--border);flex-shrink:0}
@@ -384,7 +393,6 @@ const PDV = (() => {
       existing.quantidade = novaQty;
       existing.preco_unitario = precoUnitario;
       existing.total = novaQty * precoUnitario;
-      // Remover do carrinho se zerado
       if (novaQty === 0) cart.splice(cart.indexOf(existing), 1);
     } else {
       cart.push({
@@ -399,11 +407,33 @@ const PDV = (() => {
         total: quantidade * precoUnitario,
         estoque_max: produto.estoque,
         devolucao: eDevolucao,
+        entregar: false,
       });
     }
     if (eDevolucao) Toast.show(`Devolução de ${Math.abs(quantidade)} un. adicionada`, 'info');
     renderCart();
     updateTotals();
+  }
+
+  function toggleEntregar(produtoId) {
+    const item = cart.find(i => i.produto_id === produtoId);
+    if (!item || item.devolucao) return;
+    item.entregar = !item.entregar;
+    renderCart();
+    _atualizarBadgeEntregas();
+  }
+
+  function _itensParaEntrega() {
+    return cart.filter(i => i.entregar && !i.devolucao);
+  }
+
+  function _atualizarBadgeEntregas() {
+    const n = _itensParaEntrega().length;
+    const badge = document.getElementById('pdv-entrega-badge');
+    if (badge) {
+      badge.style.display = n > 0 ? 'inline-flex' : 'none';
+      badge.textContent = `🚚 ${n} item${n !== 1 ? 's' : ''} para entrega`;
+    }
   }
 
   function addToCart(produto) {
@@ -433,6 +463,7 @@ const PDV = (() => {
     cart = [];
     selectedClient = null;
     vendedorAtual = null;
+    dadosEntrega = null;
     payMethod = 'dinheiro';
     valorPago = 0;
     document.getElementById('pdv-desconto').value = 0;
@@ -450,13 +481,14 @@ const PDV = (() => {
       el.innerHTML = `<div class="empty-state" style="padding:30px 0">
         <div class="icon">🛒</div><h3>Carrinho vazio</h3>
         <p>Busque ou escaneie um produto para começar</p></div>`;
+      _atualizarBadgeEntregas();
       return;
     }
     el.innerHTML = cart.map(item => `
-      <div class="cart-item">
+      <div class="cart-item ${item.entregar ? 'cart-item-entrega' : ''}">
         <div class="cart-emoji">${item.emoji}</div>
         <div class="cart-info">
-          <div class="cart-name">${item.produto_nome}</div>
+          <div class="cart-name">${item.produto_nome}${item.devolucao ? ' <span style="color:var(--red);font-size:10px">DEV</span>' : ''}</div>
           <div class="cart-unit">R$ ${fmtMoney(item.preco_unitario)} × ${item.quantidade}</div>
         </div>
         <div class="cart-qty">
@@ -465,8 +497,14 @@ const PDV = (() => {
           <button class="qty-btn" onclick="PDV.changeQty('${item.produto_id}',1)">+</button>
         </div>
         <div class="cart-price">R$ ${fmtMoney(item.total)}</div>
+        ${!item.devolucao ? `
+        <button class="qty-btn ${item.entregar ? 'entrega-ativo' : ''}"
+          title="${item.entregar ? 'Remover entrega' : 'Marcar para entrega'}"
+          onclick="PDV.toggleEntregar('${item.produto_id}')"
+          style="width:28px;height:28px;font-size:13px">🚚</button>` : ''}
         <button class="remove-btn" onclick="PDV.removeItem('${item.produto_id}')">✕</button>
       </div>`).join('');
+    _atualizarBadgeEntregas();
   }
 
   // ─── Totais ───────────────────────────────────────────────────
@@ -616,7 +654,167 @@ const PDV = (() => {
       ? parseFloat(document.getElementById('modal-valor-pago')?.value || total)
       : total;
 
-    // Abrir modal de vendedor
+    // Se há itens para entrega → etapa de agendamento antes do vendedor
+    if (_itensParaEntrega().length > 0) {
+      _abrirModalEntrega();
+    } else {
+      dadosEntrega = null;
+      _abrirModalVendedor();
+    }
+  }
+
+  // Etapa 2b (condicional): Agendar Entrega
+  function _abrirModalEntrega() {
+    if (!selectedClient) {
+      Toast.show('Selecione um cliente para agendar entrega', 'warning');
+      _abrirModalVendedor();
+      return;
+    }
+    const c = selectedClient;
+    const itens = _itensParaEntrega();
+    const totalEnt = itens.reduce((s, i) => s + i.total, 0);
+    // Pré-preencher com dados do cliente se existirem
+    const cep = c.cep || '';
+    const logradouro = c.logradouro || c.endereco || '';
+    const numero = c.numero || '';
+    const complemento = c.complemento || '';
+    const bairro = c.bairro || '';
+    const cidade = c.cidade || '';
+    const estado = c.estado || '';
+    // Data mínima = hoje
+    const hoje = new Date().toISOString().split('T')[0];
+
+    Modal.open(`
+<div style="margin-bottom:12px">
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+    <span style="background:var(--accent-bg);color:var(--accent);border-radius:20px;padding:2px 10px;font-size:11px;font-weight:700">ETAPA 2 DE 3</span>
+    <span style="font-size:12px;color:var(--text3)">Pagamento ✓ → 🚚 Entrega → Vendedor</span>
+  </div>
+  <div style="font-size:12px;color:var(--text2)">${itens.length} item${itens.length > 1 ? 's' : ''} para entrega · R$ ${fmtMoney(totalEnt)}</div>
+</div>
+
+${!selectedClient ? `<div style="background:var(--red);color:#fff;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:13px">
+  ⚠️ Entrega exige cliente selecionado. Volte e selecione um cliente.
+</div>` : ''}
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+  <div>
+    <label class="form-label">CEP</label>
+    <input class="input" id="ent-cep" value="${cep}" placeholder="00000-000" maxlength="9"
+      oninput="PDV._buscarCep(this.value)" style="font-size:13px">
+  </div>
+  <div>
+    <label class="form-label">Número *</label>
+    <input class="input" id="ent-numero" value="${numero}" placeholder="123" style="font-size:13px">
+  </div>
+</div>
+<div class="form-group" style="margin-bottom:10px">
+  <label class="form-label">Logradouro *</label>
+  <input class="input" id="ent-logradouro" value="${logradouro}" placeholder="Rua, Av, etc." style="font-size:13px">
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+  <div>
+    <label class="form-label">Complemento</label>
+    <input class="input" id="ent-complemento" value="${complemento}" placeholder="Apto, Bloco..." style="font-size:13px">
+  </div>
+  <div>
+    <label class="form-label">Bairro *</label>
+    <input class="input" id="ent-bairro" value="${bairro}" placeholder="Bairro" style="font-size:13px">
+  </div>
+</div>
+<div style="display:grid;grid-template-columns:1fr 80px;gap:10px;margin-bottom:10px">
+  <div>
+    <label class="form-label">Cidade *</label>
+    <input class="input" id="ent-cidade" value="${cidade}" placeholder="Cidade" style="font-size:13px">
+  </div>
+  <div>
+    <label class="form-label">UF *</label>
+    <input class="input" id="ent-estado" value="${estado}" placeholder="RJ" maxlength="2" style="font-size:13px;text-transform:uppercase">
+  </div>
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+  <div>
+    <label class="form-label">Data Agendada *</label>
+    <input class="input" id="ent-data" type="date" min="${hoje}" value="${hoje}" style="font-size:13px">
+  </div>
+  <div>
+    <label class="form-label">Turno</label>
+    <select class="input" id="ent-turno" style="font-size:13px">
+      <option value="qualquer">Qualquer horário</option>
+      <option value="manha">Manhã</option>
+      <option value="tarde">Tarde</option>
+      <option value="noite">Noite</option>
+    </select>
+  </div>
+</div>
+<div class="form-group">
+  <label class="form-label">Observação (instrução de entrega)</label>
+  <input class="input" id="ent-obs" placeholder="Ex: Entregar no portão lateral..." style="font-size:13px">
+</div>
+
+<div class="modal-actions">
+  <button class="btn btn-ghost" onclick="PDV._voltarParaPagamento()">← Voltar</button>
+  <button class="btn btn-primary btn-lg" onclick="PDV._confirmarEntrega()">Confirmar Entrega →</button>
+</div>`, 'Agendar Entrega 🚚');
+  }
+
+  async function _buscarCep(cep) {
+    const limpo = cep.replace(/\D/g, '');
+    if (limpo.length !== 8) return;
+    try {
+      const r = await fetch(`https://viacep.com.br/ws/${limpo}/json/`);
+      const d = await r.json();
+      if (d.erro) return;
+      const set = (id, v) => { const el = document.getElementById(id); if (el && v) el.value = v; };
+      set('ent-logradouro', d.logradouro);
+      set('ent-bairro', d.bairro);
+      set('ent-cidade', d.localidade);
+      set('ent-estado', d.uf);
+      document.getElementById('ent-numero')?.focus();
+    } catch {}
+  }
+
+  function _voltarParaPagamento() {
+    abrirPagamento();
+  }
+
+  function _confirmarEntrega() {
+    const logradouro = document.getElementById('ent-logradouro')?.value.trim();
+    const numero     = document.getElementById('ent-numero')?.value.trim();
+    const bairro     = document.getElementById('ent-bairro')?.value.trim();
+    const cidade     = document.getElementById('ent-cidade')?.value.trim();
+    const estado     = document.getElementById('ent-estado')?.value.trim();
+    const data       = document.getElementById('ent-data')?.value;
+
+    if (!logradouro || !numero || !bairro || !cidade || !estado || !data) {
+      Toast.show('Preencha os campos obrigatórios: logradouro, número, bairro, cidade, estado e data', 'warning');
+      return;
+    }
+
+    const itens = _itensParaEntrega();
+    dadosEntrega = {
+      cliente_id:       selectedClient?.remote_id || selectedClient?.id || null,
+      cliente_nome:     selectedClient?.nome || null,
+      cliente_telefone: selectedClient?.telefone || null,
+      cliente_whatsapp: selectedClient?.telefone ? '55' + (selectedClient.telefone || '').replace(/\D/g,'') : null,
+      cep:              document.getElementById('ent-cep')?.value.trim() || null,
+      logradouro, numero,
+      complemento:      document.getElementById('ent-complemento')?.value.trim() || null,
+      bairro, cidade, estado,
+      observacao:       document.getElementById('ent-obs')?.value.trim() || null,
+      data_agendada:    data,
+      turno:            document.getElementById('ent-turno')?.value || 'qualquer',
+      itens: itens.map(i => ({
+        produto_id:    i.produto_id,
+        produto_nome:  i.produto_nome,
+        produto_sku:   i.produto_sku || null,
+        quantidade:    i.quantidade,
+        preco_unitario:i.preco_unitario,
+        subtotal:      i.total,
+      })),
+      valor_total_entrega: itens.reduce((s, i) => s + i.total, 0),
+    };
+
     _abrirModalVendedor();
   }
 
@@ -719,7 +917,6 @@ const PDV = (() => {
     try {
       const result = await window.pdv.vendas.registrar(venda);
       if (eDevolucao) {
-        // Criar crédito na carteira do cliente
         if (selectedClient) {
           const remoteId = selectedClient.remote_id || selectedClient.id;
           await window.pdv.creditos.criarCredito(remoteId, selectedClient.nome,
@@ -730,9 +927,29 @@ const PDV = (() => {
       } else {
         Toast.show(`Venda #${result.numero} — ${vendedorAtual?.nome || 'OK'}`, 'success');
       }
+
+      // Registrar entrega se houver dados agendados
+      if (dadosEntrega && !eDevolucao) {
+        try {
+          const cfgAll = await window.pdv.config.getAll();
+          await window.pdv.entregas.salvar({
+            ...dadosEntrega,
+            venda_id:       result.remote_id || null,
+            venda_numero:   result.numero,
+            numero_local:   String(result.numero),
+            empresa_id:     cfgAll?.auth?.empresa_id || '',
+            empresa_nome:   cfgAll?.auth?.usuario?.empresa_nome || '',
+            created_at:     new Date().toISOString(),
+          });
+          Toast.show('Entrega agendada!', 'success');
+        } catch (eErr) {
+          console.warn('[ENTREGA] Erro ao salvar entrega:', eErr.message);
+          Toast.show('Venda OK — entrega salva offline', 'warning');
+        }
+      }
+
       clearCart();
       Modal.open(renderComprovante(result.numero, venda), eDevolucao ? 'Comprovante de Devolução' : 'Comprovante');
-      // Impressão automática
       _enviarImpressao(result.numero, venda);
     } catch (err) {
       Toast.show('Erro ao registrar: ' + err.message, 'error');
@@ -1126,9 +1343,11 @@ const PDV = (() => {
   return { render, init, onSearch, onSearchKey,
     selecionarProduto, fecharQtyPanel, qpKeyDown, confirmarQtyPreco,
     addToCart, changeQty, removeItem, clearCart,
+    toggleEntregar,
     setPayment, calcTroco, finalizarVenda, abrirPagamento, updateTotals,
-    _selectPay, _calcTrocoModal, _confirmarPagamento, _abrirModalVendedor,
-    _validarVendedor, _finalizarComVendedor, _vendedorAtualValido,
+    _selectPay, _calcTrocoModal, _confirmarPagamento,
+    _abrirModalEntrega, _buscarCep, _voltarParaPagamento, _confirmarEntrega,
+    _abrirModalVendedor, _validarVendedor, _finalizarComVendedor, _vendedorAtualValido,
     openClientSearch, searchClientes, selectClient, clearClient,
     _abrirNovoCliente, _salvarNovoCliente,
     _reimprimir, _enviarImpressao,

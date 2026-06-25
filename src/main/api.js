@@ -368,6 +368,49 @@ async function autenticarPDV(login, senha) {
   }
 }
 
+// ─── Entregas ─────────────────────────────────────────────────────────
+
+async function registrarEntrega(entrega) {
+  return post('/entities/Entrega', {
+    empresa_id: entrega.empresa_id || EMPRESA_ID,
+    empresa_nome: entrega.empresa_nome || null,
+    venda_id: entrega.venda_id || null,
+    venda_numero: entrega.venda_numero || null,
+    terminal_id: entrega.terminal_id || null,
+    numero_local: entrega.numero_local || null,
+    cliente_id: entrega.cliente_id || null,
+    cliente_nome: entrega.cliente_nome || null,
+    cliente_telefone: entrega.cliente_telefone || null,
+    cliente_whatsapp: entrega.cliente_whatsapp || null,
+    cep: entrega.cep || null,
+    logradouro: entrega.logradouro || null,
+    numero: entrega.numero || null,
+    complemento: entrega.complemento || null,
+    bairro: entrega.bairro || null,
+    cidade: entrega.cidade || null,
+    estado: entrega.estado || null,
+    observacao: entrega.observacao || null,
+    data_agendada: entrega.data_agendada || null,
+    turno: entrega.turno || 'qualquer',
+    itens: entrega.itens || [],
+    valor_total_entrega: entrega.valor_total_entrega || 0,
+    status: 'pendente',
+    criado_por: entrega.criado_por || null,
+    created_date: entrega.created_at || new Date().toISOString(),
+  });
+}
+
+async function listarEntregasRemoto(empresaId, status = null) {
+  const query = { empresa_id: empresaId || EMPRESA_ID };
+  if (status) query.status = status;
+  const res = await get('/entities/Entrega', { q: query, limit: 200, sort_by: '-created_date' });
+  return Array.isArray(res) ? res : (res.results || []);
+}
+
+async function atualizarEntrega(remoteId, dados) {
+  return put(`/entities/Entrega/${remoteId}`, dados);
+}
+
 // ─── ConfigTermometro ─────────────────────────────────────────────────
 
 async function sincronizarConfigTermometro() {
@@ -427,4 +470,7 @@ module.exports = {
   cancelarVenda,
   listarVendasCloud,
   getProduto,
+  registrarEntrega,
+  listarEntregasRemoto,
+  atualizarEntrega,
 };

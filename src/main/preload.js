@@ -94,6 +94,14 @@ contextBridge.exposeInMainWorld('pdv', {
     usarCredito:   (contaId, contaValor, creditoId, creditoSaldo, obs) => ipcRenderer.invoke('carteira:usarCredito', contaId, contaValor, creditoId, creditoSaldo, obs),
   },
 
+  // Entregas
+  entregas: {
+    salvar:   (e)         => ipcRenderer.invoke('entregas:salvar', e),
+    listar:   (filtros)   => ipcRenderer.invoke('entregas:listar', filtros),
+    atualizar:(id, dados) => ipcRenderer.invoke('entregas:atualizar', id, dados),
+    getById:  (id)        => ipcRenderer.invoke('entregas:getById', id),
+  },
+
   // Impressão
   print: {
     local:         (dados)  => ipcRenderer.invoke('print:local', dados),

@@ -61,7 +61,8 @@ const App = (() => {
       pdv: 'Frente de Caixa', clientes: 'Clientes',
       produtos: 'Produtos', vendas: 'Vendas',
       estoque: 'Estoque', faltas: 'Faltas & Encomendas',
-      carteira: 'Carteira de Clientes', config: 'Configurações'
+      carteira: 'Carteira de Clientes', entregas: 'Entregas',
+      config: 'Configurações'
     };
     document.getElementById('titlebar-page').textContent = titles[page] || '';
 
@@ -69,7 +70,7 @@ const App = (() => {
     const content = document.getElementById('main-content');
     const pages = { pdv: PDV, produtos: Produtos, clientes: Clientes,
                     vendas: Vendas, estoque: Estoque, faltas: Faltas,
-                    carteira: Carteira, config: Config };
+                    carteira: Carteira, entregas: Entregas, config: Config };
     const p = pages[page];
     if (p) {
       content.innerHTML = p.render();

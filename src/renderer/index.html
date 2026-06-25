@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https:;">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https:; connect-src https://viacep.com.br;">
 <title>PDV Vargas</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,400&display=swap" rel="stylesheet">
@@ -56,6 +56,11 @@
         <button class="nav-btn" data-page="carteira" onclick="App.navigate('carteira')" id="nav-carteira" style="display:none">
           <span class="nav-icon">👛</span><span>Carteira</span>
         </button>
+        <button class="nav-btn" data-page="entregas" onclick="App.navigate('entregas')" id="nav-entregas" style="position:relative">
+          <span class="nav-icon">🚚</span><span>Entregas</span>
+          <span id="entregas-badge" style="display:none;background:var(--accent);color:#fff;
+            border-radius:10px;font-size:9px;padding:1px 6px;margin-left:auto;line-height:16px"></span>
+        </button>
         <button class="nav-btn" data-page="faltas" onclick="App.navigate('faltas')" style="position:relative">
           <span class="nav-icon">📋</span><span>Faltas</span>
           <span id="faltas-badge" style="display:none;background:var(--red);color:#fff;
@@ -93,6 +98,7 @@
 <script src="pages/saude-venda.js"></script>
 <script src="pages/pdv.js"></script>
 <script src="pages/carteira.js"></script>
+<script src="pages/entregas.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

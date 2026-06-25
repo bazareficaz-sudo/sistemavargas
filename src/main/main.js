@@ -265,6 +265,44 @@ ipcMain.handle('carteira:usarCredito', async (_, contaId, contaValor, creditoId,
   }
 });
 
+// Entregas
+ipcMain.handle('entregas:salvar', async (_, entrega) => {
+  const cfgAll = store.store;
+  const usuario = cfgAll?.auth?.usuario;
+  entrega.empresa_id = entrega.empresa_id || cfgAll?.auth?.empresa_id || '';
+  entrega.terminal_id = entrega.terminal_id || store.get('config.terminal_id') || 'PDV-001';
+  entrega.criado_por = entrega.criado_por || usuario?.nome || 'operador';
+  const local = db.entregas.salvar(entrega);
+  try {
+    const remote = await api.registrarEntrega(local);
+    if (remote?.id) db.entregas.atualizar(local.id, { remote_id: remote.id, sync_status: 'synced', synced_at: new Date().toISOString() });
+    return { ok: true, id: local.id, remote_id: remote?.id };
+  } catch (err) {
+    console.warn('[ENTREGA] Offline — salvo local:', err.message);
+    return { ok: true, id: local.id, offline: true };
+  }
+});
+
+ipcMain.handle('entregas:listar', async (_, filtros) => {
+  const empresa_id = store.get('auth.empresa_id') || '';
+  try {
+    const remotas = await api.listarEntregasRemoto(empresa_id, filtros?.status || null);
+    for (const r of remotas) db.entregas.upsertRemote(r);
+  } catch {}
+  return db.entregas.listar({ empresa_id, ...(filtros || {}) });
+});
+
+ipcMain.handle('entregas:atualizar', async (_, id, dados) => {
+  db.entregas.atualizar(id, dados);
+  const entrega = db.entregas.getById(id);
+  if (entrega?.remote_id) {
+    try { await api.atualizarEntrega(entrega.remote_id, dados); } catch {}
+  }
+  return { ok: true };
+});
+
+ipcMain.handle('entregas:getById', (_, id) => db.entregas.getById(id));
+
 // Atualização
 ipcMain.handle('update:check', () => updater.checarAgora());
 ipcMain.handle('update:install', () => updater.instalarAgora());
