@@ -842,7 +842,7 @@ const PDV = (() => {
     Modal.close();
   }
 
-  function _confirmarEntrega() {
+  async function _confirmarEntrega() {
     const telefone   = document.getElementById('ent-telefone')?.value.trim();
     const logradouro = document.getElementById('ent-logradouro')?.value.trim();
     const numero     = document.getElementById('ent-numero')?.value.trim();
