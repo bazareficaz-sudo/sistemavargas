@@ -1348,14 +1348,12 @@ const Config = {
     const ip = document.getElementById('cfg-print-ip')?.value.trim();
     if (!ip) { Toast.show('Informe o IP ou URL do servidor', 'warning'); return; }
     try {
-      const pingUrl = ip.startsWith('http://') || ip.startsWith('https://')
-        ? ip.replace(/\/$/, '') + '/ping'
-        : `http://${ip}/ping`;
-      const res = await fetch(pingUrl);
+      // Ping via main process (evita bloqueio CSP para URLs externas)
+      const res = await window.pdv.print.ping(ip);
       if (res.ok) {
-        Toast.show(`✅ Conectado ao servidor de impressão em ${ip}`, 'success');
+        Toast.show(`✅ Conectado ao servidor de impressão`, 'success');
       } else {
-        Toast.show(`Servidor respondeu com erro ${res.status}`, 'error');
+        Toast.show(`Servidor respondeu com erro ${res.status || res.erro}`, 'error');
       }
     } catch (e) {
       Toast.show(`Falha ao conectar: ${e.message}`, 'error');

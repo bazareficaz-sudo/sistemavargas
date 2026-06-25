@@ -111,6 +111,7 @@ contextBridge.exposeInMainWorld('pdv', {
     serverStop:    ()       => ipcRenderer.invoke('print:server:stop'),
     serverStatus:  ()       => ipcRenderer.invoke('print:server:status'),
     listar:        ()       => ipcRenderer.invoke('print:listar'),
+    ping:          (url)   => ipcRenderer.invoke('print:ping', url),
   },
 
   // Cloudflare Tunnel

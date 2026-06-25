@@ -233,6 +233,17 @@ ipcMain.handle('print:server:status', () => ({
 ipcMain.handle('print:listar', async () => {
   return printServer.listarImpressoras(mainWindow);
 });
+ipcMain.handle('print:ping', async (_, url) => {
+  try {
+    const pingUrl = url.startsWith('http://') || url.startsWith('https://')
+      ? url.replace(/\/$/, '') + '/ping'
+      : `http://${url}/ping`;
+    const res = await require('node-fetch')(pingUrl, { timeout: 5000 });
+    return { ok: res.ok, status: res.status };
+  } catch (err) {
+    return { ok: false, erro: err.message };
+  }
+});
 
 // Carteira de Clientes
 ipcMain.handle('carteira:resumo', () => db.creditosCliente.resumoGeral());
