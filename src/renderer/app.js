@@ -28,6 +28,7 @@ const App = (() => {
     const usuario = await window.pdv.config.get('auth.usuario');
     // null = offline/admin (sem restrições); objeto = permissões por chave
     window.PDV_PERMS = usuario?.permissoes || null;
+    console.log('[PERMS]', JSON.stringify(window.PDV_PERMS));
     renderNavUser();
     // Mostrar Carteira no menu apenas para quem tem permissão
     const navCarteira = document.getElementById('nav-carteira');
@@ -270,7 +271,13 @@ const Theme = {
 window.PDV_PERMS = null;
 function podePermissao(key) {
   if (window.PDV_PERMS === null) return true;
-  return window.PDV_PERMS[key] === true;
+  if (window.PDV_PERMS[key] === true) return true;
+  // Aliases entre nomes usados no código e nomes configurados no Base44
+  const aliases = {
+    editar_venda:  ['editar_pedido'],
+    editar_pedido: ['editar_venda'],
+  };
+  return (aliases[key] || []).some(alt => window.PDV_PERMS[alt] === true);
 }
 
 // Alias global para compatibilidade com Faltas e outros módulos
