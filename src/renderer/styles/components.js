@@ -484,9 +484,10 @@ const Vendas = {
             : v.sync_status==='pending'
               ? '<span class="badge badge-yellow" title="Aguardando sincronização">⏳ Pendente</span>'
               : '<span class="badge badge-red" title="Erro na sincronização">✕ Erro</span>'}</td>
-          <td style="display:flex;gap:4px">
+          <td style="display:flex;gap:4px;flex-wrap:wrap">
             <button class="btn btn-ghost btn-sm" onclick="Vendas.imprimir('${v.id}')" title="Imprimir comprovante">🖨️</button>
             ${v.status!=='cancelada' && podePermissao('editar_venda') ? `<button class="btn btn-ghost btn-sm" style="color:var(--accent)" onclick="Vendas.editarNoPDV('${v.id}')">✏️</button>` : ''}
+            ${v.status!=='cancelada' ? `<button class="btn btn-ghost btn-sm" style="color:var(--green);font-size:10px" onclick="Vendas.emitirNFCe('${v.id}')" title="Emitir NFC-e">🧾 NFC-e</button>` : ''}
             ${v.status!=='cancelada'?`<button class="btn btn-danger btn-sm" onclick="Vendas.cancelar('${v.id}')">Cancelar</button>`:''}
           </td>
         </tr>`).join('') || '<tr><td colspan="9"><div class="empty-state"><div class="icon">🧾</div><h3>Sem vendas nesta data</h3></div></td></tr>';
@@ -590,6 +591,59 @@ const Vendas = {
     await window.pdv.vendas.cancelar(id, motivo);
     Toast.show('Venda cancelada', 'warning');
     await this.load();
+  },
+
+  async emitirNFCe(id) {
+    const venda = await window.pdv.vendas.getById(id);
+    if (!venda) { Toast.show('Venda não encontrada', 'error'); return; }
+
+    Toast.show('Emitindo NFC-e...', 'info', 5000);
+    const res = await window.pdv.nfce.emitir(venda);
+
+    if (res.ok || res.aguardando) {
+      if (res.aguardando) {
+        // Aguardar processamento assíncrono (até 10s)
+        Toast.show('Aguardando autorização da SEFAZ...', 'info', 4000);
+        await new Promise(r => setTimeout(r, 5000));
+        const consulta = await window.pdv.nfce.consultar(res.reference);
+        if (consulta.status === 'autorizado') {
+          this._abrirResultadoNFCe(res.reference, consulta);
+        } else {
+          Toast.show(`Status: ${consulta.status || 'aguardando'} — consulte em instantes`, 'warning', 5000);
+        }
+      } else {
+        this._abrirResultadoNFCe(res.reference, res.data);
+      }
+    } else {
+      Modal.open(`
+        <div style="padding:16px">
+          <div style="color:var(--red);font-size:14px;font-weight:600;margin-bottom:8px">❌ Erro na emissão</div>
+          <div style="font-size:13px;color:var(--text2);word-break:break-word">${res.erro || 'Erro desconhecido'}</div>
+          <div class="modal-actions"><button class="btn btn-ghost" onclick="Modal.close()">Fechar</button></div>
+        </div>`, 'NFC-e — Erro');
+    }
+  },
+
+  _abrirResultadoNFCe(reference, data) {
+    const chave = data?.chave_nfe || data?.chave || '—';
+    const protocolo = data?.numero_protocolo || data?.protocolo || '—';
+    const danfeUrl = data?.danfe_url || data?.url_danfe_nfce || null;
+    Modal.open(`
+      <div style="padding:16px;text-align:center">
+        <div style="font-size:32px;margin-bottom:8px">✅</div>
+        <div style="font-size:15px;font-weight:700;margin-bottom:4px">NFC-e Autorizada!</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:16px">Ref: ${reference}</div>
+        <div style="background:var(--bg3);border-radius:8px;padding:12px;margin-bottom:16px;text-align:left">
+          <div style="font-size:10px;color:var(--text3);margin-bottom:4px">CHAVE DE ACESSO</div>
+          <div style="font-size:11px;font-family:monospace;word-break:break-all">${chave}</div>
+          <div style="font-size:10px;color:var(--text3);margin-top:8px;margin-bottom:4px">PROTOCOLO</div>
+          <div style="font-size:12px;font-weight:600">${protocolo}</div>
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" onclick="Modal.close()">Fechar</button>
+          ${danfeUrl ? `<button class="btn btn-primary" onclick="window.open('${danfeUrl}')">📄 Abrir DANFE</button>` : ''}
+        </div>
+      </div>`, 'NFC-e Emitida');
   }
 };
 
@@ -1156,6 +1210,27 @@ const Config = {
     <button class="btn btn-primary btn-sm" style="margin-top:14px" onclick="Config.salvarImpressao()">Salvar configuração de impressão</button>
   </div>
 
+  <div class="card" style="margin-bottom:16px">
+    <div style="font-size:13px;font-weight:600;margin-bottom:14px">🧾 Fiscal (NFC-e / FocusNFe)</div>
+    <div class="form-group">
+      <label class="form-label">Token FocusNFe</label>
+      <input class="input" id="cfg-fiscal-token" type="password" placeholder="Token da API FocusNFe">
+    </div>
+    <div class="form-group">
+      <label class="form-label">CNPJ da Empresa Fiscal</label>
+      <input class="input" id="cfg-fiscal-cnpj" placeholder="00.000.000/0000-00">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Ambiente</label>
+      <select class="input" id="cfg-fiscal-ambiente">
+        <option value="homologacao">Homologação (testes)</option>
+        <option value="producao">Produção</option>
+      </select>
+    </div>
+    <button class="btn btn-primary btn-sm" onclick="Config.salvarFiscal()">Salvar configuração fiscal</button>
+    <button class="btn btn-ghost btn-sm" style="margin-left:8px" onclick="Config.testarFiscal()">Testar conexão</button>
+  </div>
+
   <div class="card">
     <div style="font-size:13px;font-weight:600;margin-bottom:14px">👤 Sessão</div>
     <div id="cfg-session" style="font-size:13px;color:var(--text2);margin-bottom:12px">Carregando...</div>
@@ -1209,6 +1284,11 @@ const Config = {
       Última sync: ${status.ultima_sync ? new Date(status.ultima_sync).toLocaleString('pt-BR') : 'Nunca'}<br>
       Pendentes: ${status.pendentes || 0} operações`;
 
+    // Fiscal
+    if (f('cfg-fiscal-token'))   f('cfg-fiscal-token').value   = cfg['config.fiscal_token']   || '';
+    if (f('cfg-fiscal-cnpj'))    f('cfg-fiscal-cnpj').value    = cfg['config.fiscal_cnpj']    || '';
+    if (f('cfg-fiscal-ambiente'))f('cfg-fiscal-ambiente').value= cfg['config.fiscal_ambiente'] || 'homologacao';
+
     const user = cfg['auth.usuario'];
     const ss = f('cfg-session');
     if (ss && user) {
@@ -1221,6 +1301,52 @@ const Config = {
           <div><span style="color:var(--text3);font-size:11px">EMPRESA FISCAL (NFC-e / NF-e)</span><br><strong>${emFiscal}</strong></div>
           <div><span style="color:var(--text3);font-size:11px">ESTOQUE / DEPÓSITO</span><br><strong>${emEstoque}</strong> · ${dep}${user.unificar_estoque ? ' <span style="color:var(--accent);font-size:10px">(unificado)</span>' : ''}</div>
         </div>`;
+    }
+  },
+
+  async salvarFiscal() {
+    const token   = document.getElementById('cfg-fiscal-token')?.value.trim();
+    const cnpj    = document.getElementById('cfg-fiscal-cnpj')?.value.replace(/\D/g, '');
+    const ambiente= document.getElementById('cfg-fiscal-ambiente')?.value;
+    await window.pdv.config.set('config.fiscal_token',   token);
+    await window.pdv.config.set('config.fiscal_cnpj',    cnpj);
+    await window.pdv.config.set('config.fiscal_ambiente',ambiente);
+    Toast.show('Configuração fiscal salva!', 'success');
+  },
+
+  async testarFiscal() {
+    const token = document.getElementById('cfg-fiscal-token')?.value.trim();
+    const cnpj  = document.getElementById('cfg-fiscal-cnpj')?.value.replace(/\D/g, '');
+    if (!token || !cnpj) { Toast.show('Informe o token e CNPJ antes de testar', 'warning'); return; }
+    // Emitir NFC-e mínima de teste (homologação)
+    const vendaTeste = {
+      numero: 'TESTE-' + Date.now(),
+      id: 'teste',
+      total: 1.00,
+      desconto: 0,
+      troco: 0,
+      forma_pagamento: 'dinheiro',
+      itens: [{
+        produto_sku: 'TESTE',
+        produto_nome: 'PRODUTO TESTE',
+        ncm: '00000000',
+        cfop: '5102',
+        unidade: 'UN',
+        quantidade: 1,
+        preco_unitario: 1.00,
+        total: 1.00,
+        desconto: 0,
+      }],
+    };
+    try {
+      const res = await window.pdv.nfce.emitir(vendaTeste);
+      if (res.ok || res.aguardando) {
+        Toast.show(`✅ FocusNFe conectado! Ref: ${res.reference}`, 'success');
+      } else {
+        Toast.show(`Erro: ${res.erro}`, 'error', 6000);
+      }
+    } catch (e) {
+      Toast.show('Erro ao conectar FocusNFe: ' + e.message, 'error');
     }
   },
 

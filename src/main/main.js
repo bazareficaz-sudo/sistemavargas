@@ -13,6 +13,7 @@ const api = require('./api');
 const printServer = require('./print-server');
 const tunnel = require('./tunnel');
 const updater = require('./updater');
+const focusnfe = require('./focusnfe');
 
 nativeTheme.themeSource = 'dark';
 
@@ -337,6 +338,36 @@ ipcMain.handle('tunnel:start', async (_, porta) => {
 });
 ipcMain.handle('tunnel:stop', () => { tunnel.stop(); return { ok: true }; });
 ipcMain.handle('tunnel:status', () => tunnel.getStatus());
+
+// NFC-e / FocusNFe
+ipcMain.handle('nfce:emitir', async (_, venda) => {
+  try {
+    return await focusnfe.emitirNFCe(venda);
+  } catch (err) {
+    return { ok: false, erro: err.message };
+  }
+});
+ipcMain.handle('nfce:consultar', async (_, reference) => {
+  try {
+    return await focusnfe.consultarNFCe(reference);
+  } catch (err) {
+    return { ok: false, erro: err.message };
+  }
+});
+ipcMain.handle('nfce:cancelar', async (_, reference, justificativa) => {
+  try {
+    return await focusnfe.cancelarNFCe(reference, justificativa);
+  } catch (err) {
+    return { ok: false, erro: err.message };
+  }
+});
+ipcMain.handle('nfce:danfe', async (_, reference) => {
+  try {
+    return await focusnfe.obterDanfe(reference);
+  } catch (err) {
+    return { ok: false, erro: err.message };
+  }
+});
 
 // Atualização
 ipcMain.handle('update:check', () => updater.checarAgora());

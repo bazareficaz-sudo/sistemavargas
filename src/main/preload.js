@@ -129,6 +129,14 @@ contextBridge.exposeInMainWorld('pdv', {
     onStatus: (cb) => ipcRenderer.on('update:status', (_, data) => cb(data)),
   },
 
+  // NFC-e
+  nfce: {
+    emitir:   (venda)               => ipcRenderer.invoke('nfce:emitir', venda),
+    consultar:(reference)           => ipcRenderer.invoke('nfce:consultar', reference),
+    cancelar: (reference, just)     => ipcRenderer.invoke('nfce:cancelar', reference, just),
+    danfe:    (reference)           => ipcRenderer.invoke('nfce:danfe', reference),
+  },
+
   // App
   app: {
     version: () => ipcRenderer.invoke('app:version'),
