@@ -107,8 +107,11 @@ async function getProduto(id) {
 const EMPRESA_ID = '69fcc1ef22ce2c5e401104a7';
 
 async function registrarVenda(venda) {
+  const usuario = store.get('auth.usuario') || {};
   const payload = {
-    empresa_id: EMPRESA_ID,
+    empresa_id:        usuario.empresa_estoque_id  || venda.empresa_id        || EMPRESA_ID,
+    empresa_fiscal_id: usuario.empresa_fiscal_id   || venda.empresa_fiscal_id || null,
+    deposito_id:       usuario.deposito_id          || venda.deposito_id       || null,
     numero: venda.numero,
     cliente_id: venda.cliente_remote_id || null,
     cliente_nome: venda.cliente_nome || null,
@@ -378,16 +381,30 @@ async function autenticarPDV(login, senha) {
     if (u.senha_hash !== senhaHash) return { erro: 'Senha incorreta' };
 
     const usuario = {
-      id:           u.id,
-      nome:         u.nome || u.login,
-      login:        u.login,
-      cargo:        u.cargo || 'Operador',
-      empresa_id:   u.empresa_id,
-      empresa_nome: u.empresa_nome || 'Bazar Eficaz',
-      permissoes:   u.permissoes || {},
+      id:                  u.id,
+      nome:                u.nome || u.login,
+      login:               u.login,
+      cargo:               u.cargo || 'Operador',
+      empresa_id:          u.empresa_id,
+      empresa_nome:        u.empresa_nome || 'Bazar Eficaz',
+      // Empresa fiscal (NFC-e/NF-e)
+      empresa_fiscal_id:   u.empresa_fiscal_id   || u.empresa_id,
+      empresa_fiscal_nome: u.empresa_fiscal_nome || u.empresa_nome || 'Bazar Eficaz',
+      // Empresa e depósito de estoque
+      empresa_estoque_id:  u.empresa_estoque_id  || u.empresa_id,
+      empresa_estoque_nome:u.empresa_estoque_nome|| u.empresa_nome || 'Bazar Eficaz',
+      deposito_id:         u.deposito_id         || null,
+      deposito_nome:       u.deposito_nome        || null,
+      unificar_estoque:    u.unificar_estoque     || false,
+      permissoes:          u.permissoes           || {},
     };
     store.set('auth.token', u.id);
     store.set('auth.usuario', usuario);
+    // Atalhos rápidos usados em vários lugares
+    store.set('auth.empresa_id',          usuario.empresa_id);
+    store.set('auth.empresa_fiscal_id',   usuario.empresa_fiscal_id);
+    store.set('auth.empresa_estoque_id',  usuario.empresa_estoque_id);
+    store.set('auth.deposito_id',         usuario.deposito_id);
     return { token: u.id, usuario };
   } catch (err) {
     return { erro: 'Erro de conexão: ' + err.message };

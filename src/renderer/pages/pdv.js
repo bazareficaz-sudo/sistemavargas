@@ -961,10 +961,14 @@ const PDV = (() => {
 
     const venda = {
       cliente_id: selectedClient?.id || null,
-      empresa_id: cfgAll?.auth?.empresa_id || null,
-      deposito_id: cfgAll?.auth?.deposito_id || null,
-      operador_id: cfgAll?.auth?.usuario?.id || null,
-      operador_nome: cfgAll?.auth?.usuario?.nome || 'Operador',
+      // Empresa de estoque (movimentação de saldo)
+      empresa_id:          cfgAll?.['auth.usuario']?.empresa_estoque_id  || cfgAll?.['auth.empresa_id'] || null,
+      deposito_id:         cfgAll?.['auth.usuario']?.deposito_id          || null,
+      // Empresa fiscal (emissão de NFC-e / NF-e)
+      empresa_fiscal_id:   cfgAll?.['auth.usuario']?.empresa_fiscal_id   || cfgAll?.['auth.empresa_id'] || null,
+      empresa_fiscal_nome: cfgAll?.['auth.usuario']?.empresa_fiscal_nome  || null,
+      operador_id: cfgAll?.['auth.usuario']?.id || null,
+      operador_nome: cfgAll?.['auth.usuario']?.nome || 'Operador',
       vendedor_id: vendedorAtual?.id || null,
       vendedor_nome: vendedorAtual?.nome || null,
       vendedor_codigo: vendedorAtual?.codigo || null,

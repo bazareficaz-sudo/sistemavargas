@@ -113,8 +113,9 @@ ipcMain.handle('creditos:resumo', (_, clienteRemoteId) =>
   db.creditosCliente.resumoPorCliente(clienteRemoteId)
 );
 ipcMain.handle('creditos:criar', async (_, clienteRemoteId, clienteNome, clienteTelefone, valor, observacao) => {
+  const usuario = store.get('auth.usuario') || {};
   const payload = {
-    empresa_id: '69fcc1ef22ce2c5e401104a7',
+    empresa_id: usuario.empresa_estoque_id || usuario.empresa_id || store.get('auth.empresa_id'),
     cliente_id: clienteRemoteId,
     cliente_nome: clienteNome || null,
     cliente_telefone: clienteTelefone || null,

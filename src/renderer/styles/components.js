@@ -1211,7 +1211,17 @@ const Config = {
 
     const user = cfg['auth.usuario'];
     const ss = f('cfg-session');
-    if (ss && user) ss.innerHTML = `Usuário: <strong>${user.nome || '-'}</strong><br>Empresa: ${cfg['auth.empresa_id'] || '-'}`;
+    if (ss && user) {
+      const emFiscal = user.empresa_fiscal_nome || user.empresa_nome || '-';
+      const emEstoque = user.empresa_estoque_nome || user.empresa_nome || '-';
+      const dep = user.deposito_nome || '-';
+      ss.innerHTML = `
+        <div style="display:grid;gap:6px">
+          <div><span style="color:var(--text3);font-size:11px">OPERADOR</span><br><strong>${user.nome || '-'}</strong> · ${user.cargo || 'PDV'}</div>
+          <div><span style="color:var(--text3);font-size:11px">EMPRESA FISCAL (NFC-e / NF-e)</span><br><strong>${emFiscal}</strong></div>
+          <div><span style="color:var(--text3);font-size:11px">ESTOQUE / DEPÓSITO</span><br><strong>${emEstoque}</strong> · ${dep}${user.unificar_estoque ? ' <span style="color:var(--accent);font-size:10px">(unificado)</span>' : ''}</div>
+        </div>`;
+    }
   },
 
   _setToggle(inputId, spanId, knobId, value) {
