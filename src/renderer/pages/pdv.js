@@ -142,7 +142,7 @@ const PDV = (() => {
     <!-- Botões de ação -->
     <div class="pdv-actions">
       <button class="btn btn-ghost" onclick="PDV.clearCart()" style="flex:1">🗑 Limpar</button>
-      <button class="btn btn-primary btn-lg" id="btn-finalizar" onclick="PDV.abrirPagamento()" style="flex:2" disabled>
+      <button class="btn btn-primary btn-lg" id="btn-finalizar" onclick="PDV.finalizarVenda()" style="flex:2" disabled>
         F9 — Finalizar
       </button>
     </div>
@@ -1358,7 +1358,7 @@ const PDV = (() => {
       // ── F9: pagamento ──────────────────────────────────────────
       if (e.key === 'F9') {
         e.preventDefault();
-        if (!modalAberto) abrirPagamento();
+        if (!modalAberto) finalizarVenda();
         return;
       }
 
