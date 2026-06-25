@@ -16,13 +16,13 @@ let tunnelUrl     = null;
 let statusCallback = null;
 
 function getBinaryPath() {
-  // Em produção: dentro do pacote asar unpack; em dev: raiz do projeto
+  // Salvar sempre em %APPDATA%\pdv-vargas\ — pasta gravável pelo usuário
   try {
     const { app } = require('electron');
-    if (app.isPackaged) {
-      return path.join(process.resourcesPath, 'cloudflared.exe');
-    }
+    const userData = app.getPath('userData');
+    return path.join(userData, 'cloudflared.exe');
   } catch {}
+  // Fallback em dev
   return path.join(__dirname, '../../cloudflared.exe');
 }
 
