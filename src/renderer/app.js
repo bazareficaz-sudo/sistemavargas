@@ -194,6 +194,10 @@ const App = (() => {
     const foot = document.getElementById('login-version-footer');
     if (el)   el.textContent   = ver ? `v${ver}` : '';
     if (foot) foot.textContent = ver ? `PDV Vargas v${ver} · Sistema Vargas` : 'PDV Vargas · Sistema Vargas';
+    // Pré-preencher terminal ID salvo
+    const terminalId = await window.pdv.config.get('config.terminal_id');
+    const lt = document.getElementById('l-terminal');
+    if (lt && terminalId) lt.value = terminalId;
   }
 
   async function logout() {
