@@ -8,6 +8,7 @@ const Login = {
       <img src="assets/logo.svg" alt="Sistema Vargas"
         style="width:260px;max-width:100%;height:auto;margin:0 auto 12px;display:block">
       <div style="color:var(--text2);font-size:13px;margin-top:4px">Terminal de Vendas · PDV</div>
+      <div id="login-version" style="color:var(--text3);font-size:11px;margin-top:4px">v…</div>
     </div>
     <div class="card">
       <div class="form-group">
@@ -32,7 +33,7 @@ const Login = {
       </button>
       <div id="l-error" style="color:var(--red);font-size:12px;margin-top:10px;text-align:center;display:none"></div>
     </div>
-    <div style="text-align:center;margin-top:16px;font-size:11px;color:var(--text3)">
+    <div id="login-version-footer" style="text-align:center;margin-top:16px;font-size:11px;color:var(--text3)">
       PDV Vargas · Sistema Vargas
     </div>
   </div>

@@ -46,6 +46,11 @@ const App = (() => {
     }
     const tbEmpresa = document.getElementById('titlebar-empresa');
     if (tbEmpresa && user?.empresa_nome) tbEmpresa.textContent = user.empresa_nome;
+    // Versão na titlebar
+    const tbVer = document.getElementById('titlebar-version');
+    if (tbVer) {
+      window.pdv.app.version().then(v => { if (v) tbVer.textContent = `v${v}`; }).catch(() => {});
+    }
   }
 
   // ─── Routing ──────────────────────────────────────────────────
@@ -185,8 +190,14 @@ const App = (() => {
   }
 
   // ─── Login ────────────────────────────────────────────────────
-  function renderLogin() {
+  async function renderLogin() {
     document.getElementById('login-screen').innerHTML = Login.render();
+    // Mostrar versão na tela de login
+    const ver = await window.pdv.app.version().catch(() => '');
+    const el = document.getElementById('login-version');
+    const foot = document.getElementById('login-version-footer');
+    if (el)   el.textContent   = ver ? `v${ver}` : '';
+    if (foot) foot.textContent = ver ? `PDV Vargas v${ver} · Sistema Vargas` : 'PDV Vargas · Sistema Vargas';
   }
 
   async function logout() {
