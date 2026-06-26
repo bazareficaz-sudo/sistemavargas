@@ -147,6 +147,17 @@ contextBridge.exposeInMainWorld('pdv', {
     status:   () => ipcRenderer.invoke('ia:status'),
   },
 
+  // Shopee
+  shopee: {
+    status:            ()              => ipcRenderer.invoke('shopee:status'),
+    salvarCredenciais: (id, key, sb)   => ipcRenderer.invoke('shopee:salvarCredenciais', id, key, sb),
+    conectar:          ()              => ipcRenderer.invoke('shopee:conectar'),
+    desconectar:       ()              => ipcRenderer.invoke('shopee:desconectar'),
+    shopInfo:          ()              => ipcRenderer.invoke('shopee:shopInfo'),
+    anuncios:          (page)          => ipcRenderer.invoke('shopee:anuncios', page),
+    pedidos:           (status)        => ipcRenderer.invoke('shopee:pedidos', status),
+  },
+
   // App
   app: {
     version: () => ipcRenderer.invoke('app:version'),

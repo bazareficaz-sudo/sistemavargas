@@ -14,7 +14,8 @@ const printServer = require('./print-server');
 const tunnel = require('./tunnel');
 const updater = require('./updater');
 const focusnfe = require('./focusnfe');
-const ia = require('./ia');
+const ia       = require('./ia');
+const shopee   = require('./shopee');
 
 nativeTheme.themeSource = 'dark';
 
@@ -199,6 +200,22 @@ ipcMain.handle('ia:fiscal', async (_, nome, categoria, unidade) => ia.sugerirFis
 ipcMain.handle('ia:descricao', async (_, nome, categoria, marca, unidade) => ia.gerarDescricao(nome, categoria, marca, unidade));
 ipcMain.handle('ia:lote', async (_, produtos) => ia.enriquecerLote(produtos));
 ipcMain.handle('ia:status', () => ({ configurado: !!ia.getApiKey() }));
+
+// ─── Shopee ────────────────────────────────────────────────────────
+ipcMain.handle('shopee:status',  () => shopee.getStatus());
+ipcMain.handle('shopee:salvarCredenciais', (_, id, key, sandbox) => shopee.salvarCredenciais(id, key, sandbox));
+ipcMain.handle('shopee:conectar', async () => {
+  try {
+    const result = await shopee.iniciarAuth(mainWindow);
+    return { ok: true, ...result };
+  } catch (e) {
+    return { ok: false, erro: e.message };
+  }
+});
+ipcMain.handle('shopee:desconectar', async () => { await shopee.desconectar(); return { ok: true }; });
+ipcMain.handle('shopee:shopInfo',    async () => { try { return await shopee.getShopInfo(); } catch(e) { return null; } });
+ipcMain.handle('shopee:anuncios',    async (_, page) => { try { return await shopee.getAnuncios(page); } catch(e) { return { erro: e.message }; } });
+ipcMain.handle('shopee:pedidos',     async (_, status) => { try { return await shopee.getPedidos(status); } catch(e) { return { erro: e.message }; } });
 
 // Sync
 ipcMain.handle('sync:status', () => sync.getStatus());

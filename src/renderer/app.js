@@ -70,7 +70,7 @@ const App = (() => {
       produtos: 'Produtos', vendas: 'Vendas',
       estoque: 'Estoque', faltas: 'Faltas & Encomendas',
       carteira: 'Carteira de Clientes', entregas: 'Entregas',
-      config: 'Configurações'
+      config: 'Configurações', marketplace: 'Marketplace'
     };
     document.getElementById('titlebar-page').textContent = titles[page] || '';
 
@@ -78,7 +78,8 @@ const App = (() => {
     const content = document.getElementById('main-content');
     const pages = { pdv: PDV, produtos: Produtos, clientes: Clientes,
                     vendas: Vendas, estoque: Estoque, faltas: Faltas,
-                    carteira: Carteira, entregas: Entregas, config: Config };
+                    carteira: Carteira, entregas: Entregas, config: Config,
+                    marketplace: Marketplace };
     const p = pages[page];
     if (p) {
       content.innerHTML = p.render();

@@ -17,6 +17,11 @@
       <span class="app-name">PDV Vargas</span>
       <span id="titlebar-empresa" style="font-size:11px;color:var(--text3);padding-left:6px;border-left:1px solid var(--border2);margin-left:2px"></span>
       <span id="titlebar-version" style="font-size:10px;color:var(--text3);margin-left:6px;opacity:.6"></span>
+      <button onclick="App.showLauncher()" title="Tela inicial" style="
+        background:none;border:none;cursor:pointer;color:var(--text3);
+        font-size:16px;padding:4px 8px;border-radius:6px;
+        transition:.15s;line-height:1
+      " onmouseenter="this.style.color='var(--accent)'" onmouseleave="this.style.color='var(--text3)'">⬡</button>
       <div class="sync-indicator" id="sync-indicator">
         <span class="sync-dot offline" id="sync-dot"></span>
         <span id="sync-label">Offline</span>
@@ -70,6 +75,9 @@
           <span id="faltas-badge" style="display:none;background:var(--red);color:#fff;
             border-radius:10px;font-size:9px;padding:1px 6px;margin-left:auto;line-height:16px"></span>
         </button>
+        <button class="nav-btn" data-page="marketplace" onclick="App.navigate('marketplace')">
+          <span class="nav-icon">🛍️</span><span>Marketplace</span>
+        </button>
         <button class="nav-btn" data-page="config" onclick="App.navigate('config')">
           <span class="nav-icon">⚙️</span><span>Config</span>
         </button>
@@ -106,6 +114,7 @@
 <script src="pages/pdv.js"></script>
 <script src="pages/carteira.js"></script>
 <script src="pages/entregas.js"></script>
+<script src="pages/marketplace.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
