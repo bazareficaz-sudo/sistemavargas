@@ -90,6 +90,7 @@ const Produtos = {
   sortDir: 'asc',
   cols: { foto:true, nome:true, sku:true, categoria:true, preco:true, custo:false, estoque:true, ncm:false, cfop:false, status:true },
   _data: [],
+  _sel: new Set(), // IDs selecionados
 
   render() {
     return `
@@ -123,11 +124,18 @@ const Produtos = {
     <button class="btn btn-primary" onclick="Produtos.openForm()">+ Novo Produto</button>
   </div>
 </div>
+<!-- Barra de ações para seleção múltipla -->
+<div id="prod-sel-bar" style="display:none;background:var(--gold);color:#1a1a0e;padding:10px 20px;display:none;align-items:center;gap:12px;font-size:13px;font-weight:600">
+  <span id="prod-sel-count">0 selecionados</span>
+  <button class="btn btn-sm" style="background:rgba(0,0,0,.15);color:inherit;border:none" onclick="Produtos.iaLoteSelecionados()">🤖 Preencher fiscal com IA</button>
+  <button class="btn btn-sm" style="background:rgba(0,0,0,.15);color:inherit;border:none" onclick="Produtos.desmarcarTodos()">✕ Limpar seleção</button>
+  <button class="btn btn-sm" style="background:rgba(0,0,0,.15);color:inherit;border:none;margin-left:auto" onclick="Produtos.selecionarSemNcm()">Selecionar sem NCM</button>
+</div>
 <div style="flex:1;overflow:auto">
   <div class="table-wrap">
     <table id="prod-table">
       <thead id="prod-thead"></thead>
-      <tbody id="prod-tbody"><tr><td colspan="10" style="text-align:center;padding:30px;color:var(--text3)">Carregando...</td></tr></tbody>
+      <tbody id="prod-tbody"><tr><td colspan="11" style="text-align:center;padding:30px;color:var(--text3)">Carregando...</td></tr></tbody>
     </table>
   </div>
 </div>`;
@@ -154,6 +162,7 @@ const Produtos = {
   _renderHeader() {
     const th = document.getElementById('prod-thead');
     if (!th) return;
+    const allChecked = this._data.length > 0 && this._data.every(p => this._sel.has(p.id));
     const cols = [
       { key:'foto',      label:'',           sortable:false },
       { key:'nome',      label:'Produto',    sortable:true  },
@@ -166,12 +175,15 @@ const Produtos = {
       { key:'cfop',      label:'CFOP',       sortable:false },
       { key:'status',    label:'Status',     sortable:true  },
     ];
-    th.innerHTML = `<tr>${cols.filter(c=>this.cols[c.key]).map(c=>{
-      const arrow = c.sortable ? (this.sortCol===c.key ? (this.sortDir==='asc'?'↑':'↓') : '<span style="opacity:.3">↕</span>') : '';
-      const style = c.sortable ? 'cursor:pointer;user-select:none' : '';
-      const click = c.sortable ? `onclick="Produtos._sortBy('${c.key}')"` : '';
-      return `<th style="${style}" ${click}>${c.label} ${arrow}</th>`;
-    }).join('')}<th></th></tr>`;
+    th.innerHTML = `<tr>
+      <th style="width:36px;padding:0 8px"><input type="checkbox" id="prod-chk-all" ${allChecked?'checked':''} onchange="Produtos.toggleTodos(this.checked)" title="Selecionar todos"></th>
+      ${cols.filter(c=>this.cols[c.key]).map(c=>{
+        const arrow = c.sortable ? (this.sortCol===c.key ? (this.sortDir==='asc'?'↑':'↓') : '<span style="opacity:.3">↕</span>') : '';
+        const style = c.sortable ? 'cursor:pointer;user-select:none' : '';
+        const click = c.sortable ? `onclick="Produtos._sortBy('${c.key}')"` : '';
+        return `<th style="${style}" ${click}>${c.label} ${arrow}</th>`;
+      }).join('')}
+      <th></th></tr>`;
   },
 
   _sortedData() {
@@ -198,20 +210,21 @@ const Produtos = {
       return;
     }
     tbody.innerHTML = this._sortedData().map(p => {
+      const sel = this._sel.has(p.id);
       const cells = [];
+      cells.push(`<td style="padding:0 8px;width:36px"><input type="checkbox" ${sel?'checked':''} onchange="Produtos.toggleSel('${p.id}',this.checked)"></td>`);
       if (cols.foto)      cells.push(`<td style="padding:6px 8px">${p.foto_url?`<img src="${p.foto_url}" loading="lazy" onerror="this.style.display='none'" style="width:40px;height:40px;object-fit:cover;border-radius:6px;display:block">`:`<span style="font-size:24px;display:block;text-align:center">${p.emoji||'📦'}</span>`}</td>`);
-      if (cols.nome)      cells.push(`<td><span class="td-main">${p.nome}</span>${!p.disponivel_pdv?'<br><span class="badge" style="background:var(--orange);color:#fff;font-size:10px">Fora PDV</span>':''}</td>`);
+      if (cols.nome)      cells.push(`<td><span class="td-main">${p.nome}</span>${!p.disponivel_pdv?'<br><span class="badge" style="background:var(--orange);color:#fff;font-size:10px">Fora PDV</span>':''}${!p.ncm?'<span class="badge" style="background:var(--bg3);color:var(--text3);font-size:10px;margin-left:4px">sem NCM</span>':''}</td>`);
       if (cols.sku)       cells.push(`<td class="td-mono">${p.sku||'-'}<br><span style="color:var(--text3);font-size:10px">${p.ean||''}</span></td>`);
       if (cols.categoria) cells.push(`<td>${p.categoria?`<span class="badge badge-blue">${p.categoria}</span>`:'-'}</td>`);
       if (cols.preco)     cells.push(`<td class="td-price">R$ ${fmtMoney(p.preco_venda)}</td>`);
       if (cols.custo)     cells.push(`<td class="td-price" style="color:var(--text2)">R$ ${fmtMoney(p.preco_custo||0)}</td>`);
       if (cols.estoque)   cells.push(`<td><span style="color:${p.estoque===0?'var(--red)':p.estoque<=5?'var(--orange)':'var(--text)'}">${p.estoque??'-'}</span></td>`);
-      if (cols.ncm)       cells.push(`<td class="td-mono" style="font-size:12px">${p.ncm||'-'}</td>`);
-      if (cols.cfop)      cells.push(`<td class="td-mono" style="font-size:12px">${p.cfop||'-'}</td>`);
+      if (cols.ncm)       cells.push(`<td class="td-mono" style="font-size:12px">${p.ncm||'<span style="color:var(--text3)">—</span>'}</td>`);
+      if (cols.cfop)      cells.push(`<td class="td-mono" style="font-size:12px">${p.cfop||'<span style="color:var(--text3)">—</span>'}</td>`);
       if (cols.status)    cells.push(`<td>${p.ativo?'<span class="badge badge-green">Ativo</span>':'<span class="badge badge-gray">Inativo</span>'}</td>`);
-      cells.push(`<td style="white-space:nowrap"><button class="btn btn-ghost btn-sm" onclick="Produtos.openForm('${p.id}')">Editar</button>${!p.ncm?`<button class="btn btn-ghost btn-sm" style="color:var(--gold);margin-left:4px" onclick="Produtos.enriquecerIA('${p.id}','${p.nome.replace(/'/g,"\\'")}','${(p.categoria||'').replace(/'/g,"\\'")}','${(p.unidade||'UN')}')" title="Preencher dados fiscais com IA">🤖</button>`:''}
-</td>`);
-      return `<tr>${cells.join('')}</tr>`;
+      cells.push(`<td style="white-space:nowrap"><button class="btn btn-ghost btn-sm" onclick="Produtos.openForm('${p.id}')">Editar</button></td>`);
+      return `<tr style="${sel?'background:rgba(var(--gold-rgb,180,140,0),.08)':''}">${cells.join('')}</tr>`;
     }).join('');
   },
 
@@ -230,6 +243,84 @@ const Produtos = {
   search(val) {
     clearTimeout(this.searchTimeout);
     this.searchTimeout = setTimeout(() => this.load(val), 150);
+  },
+
+  // ─── Seleção múltipla ────────────────────────────────────────────
+  toggleSel(id, checked) {
+    if (checked) this._sel.add(id); else this._sel.delete(id);
+    this._atualizarBarraSel();
+    // atualizar linha sem re-renderizar tudo
+    const chkAll = document.getElementById('prod-chk-all');
+    if (chkAll) chkAll.checked = this._data.length > 0 && this._data.every(p => this._sel.has(p.id));
+  },
+
+  toggleTodos(checked) {
+    if (checked) this._data.forEach(p => this._sel.add(p.id));
+    else this._sel.clear();
+    this._atualizarBarraSel();
+    this._renderTable();
+  },
+
+  desmarcarTodos() {
+    this._sel.clear();
+    this._atualizarBarraSel();
+    this._renderTable();
+  },
+
+  selecionarSemNcm() {
+    this._data.filter(p => !p.ncm).forEach(p => this._sel.add(p.id));
+    this._atualizarBarraSel();
+    this._renderTable();
+    Toast.show(`${this._sel.size} produtos sem NCM selecionados`, 'info');
+  },
+
+  _atualizarBarraSel() {
+    const bar = document.getElementById('prod-sel-bar');
+    const count = document.getElementById('prod-sel-count');
+    if (!bar) return;
+    if (this._sel.size > 0) {
+      bar.style.display = 'flex';
+      if (count) count.textContent = `${this._sel.size} produto${this._sel.size > 1 ? 's' : ''} selecionado${this._sel.size > 1 ? 's' : ''}`;
+    } else {
+      bar.style.display = 'none';
+    }
+  },
+
+  // IA: enriquecer selecionados em lote
+  async iaLoteSelecionados() {
+    if (!this._sel.size) return;
+    const selecionados = this._data.filter(p => this._sel.has(p.id));
+    const ok = await window.pdv.app.confirm(`Preencher dados fiscais com IA para ${selecionados.length} produto(s) selecionado(s)?`);
+    if (!ok) return;
+
+    const bar = document.getElementById('prod-sel-bar');
+    const countEl = document.getElementById('prod-sel-count');
+    const GRUPO = 20;
+    let ok_count = 0, err_count = 0;
+
+    for (let i = 0; i < selecionados.length; i += GRUPO) {
+      const grupo = selecionados.slice(i, i + GRUPO).map(p => ({ id: p.id, nome: p.nome, categoria: p.categoria, unidade: p.unidade }));
+      if (countEl) countEl.textContent = `🤖 Processando ${Math.min(i + GRUPO, selecionados.length)}/${selecionados.length}...`;
+      try {
+        const resultados = await window.pdv.ia.lote(grupo);
+        for (const r of resultados) {
+          if (!r.id || !r.ncm) continue;
+          await window.pdv.produtos.atualizar(r.id, {
+            ncm: r.ncm, cfop: r.cfop, icms_cst: r.icms_cst,
+            icms_origem: r.icms_origem || 0, pis_cst: r.pis_cst, cofins_cst: r.cofins_cst,
+          });
+          ok_count++;
+        }
+      } catch(e) {
+        err_count += grupo.length;
+        console.error('[IA lote]', e.message);
+      }
+    }
+
+    Toast.show(`IA concluída: ${ok_count} produtos atualizados${err_count ? ` · ${err_count} erros` : ''}`, ok_count ? 'success' : 'error');
+    this._sel.clear();
+    this._atualizarBarraSel();
+    await this.load(document.getElementById('prod-search')?.value || '');
   },
 
   async resync() {

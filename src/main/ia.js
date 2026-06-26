@@ -17,6 +17,7 @@ async function callClaude(prompt) {
   const key = getApiKey();
   if (!key) throw new Error('Chave da API Anthropic não configurada. Acesse Config → IA para cadastrar.');
 
+  console.log('[IA] Chamando Claude, modelo:', MODEL, '| key:', key.slice(0,12) + '...');
   const res = await fetch(ANTHROPIC_URL, {
     method: 'POST',
     headers: {
@@ -33,8 +34,10 @@ async function callClaude(prompt) {
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
+    console.error('[IA] Erro HTTP', res.status, JSON.stringify(err));
     throw new Error(err.error?.message || `HTTP ${res.status}`);
   }
+  console.log('[IA] Resposta OK');
 
   const data = await res.json();
   return data.content?.[0]?.text || '';
