@@ -78,7 +78,13 @@ async function syncNow(win) {
     isOnline = true;
     syncStatus.online = true;
 
-    // 1. Baixar dados do servidor (servidor → local)
+    // 1. Upload primeiro: enviar alterações locais antes de sobrescrever com download
+    await syncUpProdutos();
+    await recuperarClientesPendentes();
+    await processarFilaSync();
+    await recuperarVendasPendentes();
+
+    // 2. Baixar dados do servidor (servidor → local) — agora o Base44 já tem os dados locais
     await syncDownProdutos();
     await syncDownClientes();
     await syncDownEstoque();
@@ -88,15 +94,6 @@ async function syncNow(win) {
     await syncDownConfigDesconto();
     await syncDownConfigTermometro();
     await syncDownFaltas();
-
-    // 2. Garantir que todos os clientes tenham remote_id antes de sincronizar vendas
-    await recuperarClientesPendentes();
-    // 3. Enviar dados locais pendentes (local → servidor) — vendas já encontram cliente_remote_id
-    await processarFilaSync();
-    // 4. Recuperar vendas que falharam e saíram da fila sem sincronizar
-    await recuperarVendasPendentes();
-    // 5. Enviar produtos alterados localmente (NCM, CFOP, fiscal, etc.) para o Base44
-    await syncUpProdutos();
 
     // Atualizar timestamps
     const agora = new Date().toISOString();
@@ -542,4 +539,4 @@ function stopAutoSync() {
   if (syncInterval) clearInterval(syncInterval);
 }
 
-module.exports = { startAutoSync, stopAutoSync, syncNow, syncFila, getStatus, checkOnline };
+module.exports = { startAutoSync, stopAutoSync, syncNow, syncFila, getStatus, checkOnline, syncUpProdutos };

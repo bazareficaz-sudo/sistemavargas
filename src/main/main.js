@@ -207,9 +207,10 @@ ipcMain.handle('sync:now', async () => {
   return result;
 });
 ipcMain.handle('sync:fullProdutos', async () => {
-  // Zera o timestamp de produtos para forçar re-sync completo
+  // Sobe alterações locais ANTES de limpar o timestamp e re-baixar tudo
   const Store = require('electron-store');
   const s = new Store();
+  await sync.syncUpProdutos();
   s.delete('sync.ultima_sync_produtos');
   return await sync.syncNow(mainWindow);
 });
