@@ -86,25 +86,130 @@ const Login = {
 // ─── Produtos ─────────────────────────────────────────────────────
 const Produtos = {
   searchTimeout: null,
+  sortCol: 'nome',
+  sortDir: 'asc',
+  cols: { foto:true, nome:true, sku:true, categoria:true, preco:true, custo:false, estoque:true, ncm:false, cfop:false, status:true },
+  _data: [],
 
   render() {
     return `
-<div class="page-header">
-  <div><div class="page-title">Produtos</div><div class="page-sub" id="prod-count">Carregando...</div></div>
-  <div class="page-actions">
-    <input class="input" id="prod-search" placeholder="🔍 Buscar..." style="width:220px"
-      oninput="Produtos.search(this.value)">
+<div class="page-header" style="flex-wrap:wrap;gap:8px">
+  <div style="display:flex;align-items:center;gap:12px;flex:1;min-width:0">
+    <div>
+      <div class="page-title">Produtos</div>
+      <div class="page-sub" id="prod-count">Carregando...</div>
+    </div>
+    <input class="input" id="prod-search" placeholder="🔍 Buscar produto, SKU, EAN..."
+      style="flex:1;max-width:480px" oninput="Produtos.search(this.value)">
+  </div>
+  <div class="page-actions" style="flex-shrink:0">
+    <div style="position:relative;display:inline-block">
+      <button class="btn btn-ghost" onclick="Produtos.toggleColMenu()" id="prod-col-btn" title="Colunas visíveis">
+        ⚙ Colunas
+      </button>
+      <div id="prod-col-menu" style="display:none;position:absolute;right:0;top:36px;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 14px;z-index:200;min-width:180px;box-shadow:0 4px 20px rgba(0,0,0,.15)">
+        ${[
+          ['foto','Foto/Emoji'],['nome','Nome'],['sku','SKU / EAN'],['categoria','Categoria'],
+          ['preco','Preço venda'],['custo','Preço custo'],['estoque','Estoque'],
+          ['ncm','NCM'],['cfop','CFOP'],['status','Status']
+        ].map(([k,l])=>`
+        <label style="display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer;font-size:13px">
+          <input type="checkbox" ${Produtos.cols[k]?'checked':''} onchange="Produtos.toggleCol('${k}',this.checked)"> ${l}
+        </label>`).join('')}
+      </div>
+    </div>
     <button class="btn btn-primary" onclick="Produtos.openForm()">+ Novo Produto</button>
   </div>
 </div>
 <div style="flex:1;overflow:auto">
   <div class="table-wrap">
-    <table>
-      <thead><tr><th style="width:52px"></th><th>Produto</th><th>SKU / EAN</th><th>Categoria</th><th>Preço</th><th>Estoque</th><th>Status</th><th></th></tr></thead>
-      <tbody id="prod-tbody"><tr><td colspan="8" style="text-align:center;padding:30px;color:var(--text3)">Carregando...</td></tr></tbody>
+    <table id="prod-table">
+      <thead id="prod-thead"></thead>
+      <tbody id="prod-tbody"><tr><td colspan="10" style="text-align:center;padding:30px;color:var(--text3)">Carregando...</td></tr></tbody>
     </table>
   </div>
 </div>`;
+  },
+
+  toggleColMenu() {
+    const m = document.getElementById('prod-col-menu');
+    if (m) m.style.display = m.style.display === 'none' ? 'block' : 'none';
+    const close = (e) => { if (!document.getElementById('prod-col-btn')?.contains(e.target) && !m?.contains(e.target)) { if(m) m.style.display='none'; document.removeEventListener('click',close); } };
+    setTimeout(()=>document.addEventListener('click',close),10);
+  },
+
+  toggleCol(key, val) {
+    this.cols[key] = val;
+    this._renderTable();
+  },
+
+  _sortBy(col) {
+    if (this.sortCol === col) this.sortDir = this.sortDir === 'asc' ? 'desc' : 'asc';
+    else { this.sortCol = col; this.sortDir = 'asc'; }
+    this._renderTable();
+  },
+
+  _renderHeader() {
+    const th = document.getElementById('prod-thead');
+    if (!th) return;
+    const cols = [
+      { key:'foto',      label:'',           sortable:false },
+      { key:'nome',      label:'Produto',    sortable:true  },
+      { key:'sku',       label:'SKU / EAN',  sortable:true  },
+      { key:'categoria', label:'Categoria',  sortable:true  },
+      { key:'preco',     label:'Preço',      sortable:true  },
+      { key:'custo',     label:'Custo',      sortable:true  },
+      { key:'estoque',   label:'Estoque',    sortable:true  },
+      { key:'ncm',       label:'NCM',        sortable:false },
+      { key:'cfop',      label:'CFOP',       sortable:false },
+      { key:'status',    label:'Status',     sortable:true  },
+    ];
+    th.innerHTML = `<tr>${cols.filter(c=>this.cols[c.key]).map(c=>{
+      const arrow = c.sortable ? (this.sortCol===c.key ? (this.sortDir==='asc'?'↑':'↓') : '<span style="opacity:.3">↕</span>') : '';
+      const style = c.sortable ? 'cursor:pointer;user-select:none' : '';
+      const click = c.sortable ? `onclick="Produtos._sortBy('${c.key}')"` : '';
+      return `<th style="${style}" ${click}>${c.label} ${arrow}</th>`;
+    }).join('')}<th></th></tr>`;
+  },
+
+  _sortedData() {
+    const col = this.sortCol;
+    const dir = this.sortDir === 'asc' ? 1 : -1;
+    return [...this._data].sort((a,b) => {
+      let va = a[col], vb = b[col];
+      if (col==='preco') { va=a.preco_venda; vb=b.preco_venda; }
+      if (col==='custo') { va=a.preco_custo; vb=b.preco_custo; }
+      if (col==='status') { va=a.ativo?1:0; vb=b.ativo?1:0; }
+      if (typeof va==='string') return va.localeCompare(vb||'', 'pt-BR')*dir;
+      return ((va||0)-(vb||0))*dir;
+    });
+  },
+
+  _renderTable() {
+    this._renderHeader();
+    const tbody = document.getElementById('prod-tbody');
+    if (!tbody) return;
+    const cols = this.cols;
+    const colCount = Object.values(cols).filter(Boolean).length + 1;
+    if (!this._data.length) {
+      tbody.innerHTML = `<tr><td colspan="${colCount}"><div class="empty-state"><div class="icon">📦</div><h3>Nenhum produto encontrado</h3></div></td></tr>`;
+      return;
+    }
+    tbody.innerHTML = this._sortedData().map(p => {
+      const cells = [];
+      if (cols.foto)      cells.push(`<td style="padding:6px 8px">${p.foto_url?`<img src="${p.foto_url}" loading="lazy" onerror="this.style.display='none'" style="width:40px;height:40px;object-fit:cover;border-radius:6px;display:block">`:`<span style="font-size:24px;display:block;text-align:center">${p.emoji||'📦'}</span>`}</td>`);
+      if (cols.nome)      cells.push(`<td><span class="td-main">${p.nome}</span></td>`);
+      if (cols.sku)       cells.push(`<td class="td-mono">${p.sku||'-'}<br><span style="color:var(--text3);font-size:10px">${p.ean||''}</span></td>`);
+      if (cols.categoria) cells.push(`<td>${p.categoria?`<span class="badge badge-blue">${p.categoria}</span>`:'-'}</td>`);
+      if (cols.preco)     cells.push(`<td class="td-price">R$ ${fmtMoney(p.preco_venda)}</td>`);
+      if (cols.custo)     cells.push(`<td class="td-price" style="color:var(--text2)">R$ ${fmtMoney(p.preco_custo||0)}</td>`);
+      if (cols.estoque)   cells.push(`<td><span style="color:${p.estoque===0?'var(--red)':p.estoque<=5?'var(--orange)':'var(--text)'}">${p.estoque??'-'}</span></td>`);
+      if (cols.ncm)       cells.push(`<td class="td-mono" style="font-size:12px">${p.ncm||'-'}</td>`);
+      if (cols.cfop)      cells.push(`<td class="td-mono" style="font-size:12px">${p.cfop||'-'}</td>`);
+      if (cols.status)    cells.push(`<td>${p.ativo?'<span class="badge badge-green">Ativo</span>':'<span class="badge badge-gray">Inativo</span>'}</td>`);
+      cells.push(`<td><button class="btn btn-ghost btn-sm" onclick="Produtos.openForm('${p.id}')">Editar</button></td>`);
+      return `<tr>${cells.join('')}</tr>`;
+    }).join('');
   },
 
   async init() {
@@ -115,34 +220,8 @@ const Produtos = {
   },
 
   async load(query) {
-    const produtos = await window.pdv.produtos.buscar(query);
-    const tbody = document.getElementById('prod-tbody');
-    if (!tbody) return;
-    if (!produtos.length) {
-      tbody.innerHTML = '<tr><td colspan="8"><div class="empty-state"><div class="icon">📦</div><h3>Nenhum produto encontrado</h3></div></td></tr>';
-      return;
-    }
-    tbody.innerHTML = produtos.map(p => `
-      <tr>
-        <td style="padding:6px 8px">
-          ${p.foto_url
-            ? `<img src="${p.foto_url}" loading="lazy" onerror="this.style.display='none'" style="width:40px;height:40px;object-fit:cover;border-radius:6px;display:block">`
-            : `<span style="font-size:24px;display:block;text-align:center">${p.emoji || '📦'}</span>`}
-        </td>
-        <td><span class="td-main">${p.nome}</span></td>
-        <td class="td-mono">${p.sku || '-'}<br><span style="color:var(--text3);font-size:10px">${p.ean || ''}</span></td>
-        <td>${p.categoria ? `<span class="badge badge-blue">${p.categoria}</span>` : '-'}</td>
-        <td class="td-price">R$ ${fmtMoney(p.preco_venda)}</td>
-        <td>
-          <span style="color:${p.estoque === 0 ? 'var(--red)' : p.estoque <= 5 ? 'var(--orange)' : 'var(--text)'}">
-            ${p.estoque ?? '-'}
-          </span>
-        </td>
-        <td>${p.ativo ? '<span class="badge badge-green">Ativo</span>' : '<span class="badge badge-gray">Inativo</span>'}</td>
-        <td><div class="flex gap-8">
-          <button class="btn btn-ghost btn-sm" onclick="Produtos.openForm('${p.id}')">Editar</button>
-        </div></td>
-      </tr>`).join('');
+    this._data = await window.pdv.produtos.buscar(query);
+    this._renderTable();
   },
 
   search(val) {
