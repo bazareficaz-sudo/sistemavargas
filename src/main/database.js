@@ -314,6 +314,12 @@ function runMigrations() {
     'ALTER TABLE vendas ADD COLUMN updated_at TEXT',
     'ALTER TABLE entregas ADD COLUMN referencia TEXT',
     'ALTER TABLE entregas ADD COLUMN cliente_documento TEXT',
+    'ALTER TABLE produtos ADD COLUMN ncm TEXT',
+    'ALTER TABLE produtos ADD COLUMN cfop TEXT DEFAULT \'5102\'',
+    'ALTER TABLE produtos ADD COLUMN icms_cst TEXT DEFAULT \'400\'',
+    'ALTER TABLE produtos ADD COLUMN icms_origem INTEGER DEFAULT 0',
+    'ALTER TABLE produtos ADD COLUMN pis_cst TEXT DEFAULT \'07\'',
+    'ALTER TABLE produtos ADD COLUMN cofins_cst TEXT DEFAULT \'07\'',
     `CREATE TABLE IF NOT EXISTS entregas (
       id TEXT PRIMARY KEY, remote_id TEXT UNIQUE,
       empresa_id TEXT, empresa_nome TEXT, venda_id TEXT, venda_numero INTEGER,

@@ -199,6 +199,66 @@ const Produtos = {
     <input class="input" id="pf-marca" value="${p.marca || ''}">
   </div>
 </div>
+
+<!-- Dados Fiscais -->
+<div style="margin:14px 0 8px;padding-top:14px;border-top:1px solid var(--border);font-size:11px;font-weight:700;color:var(--text3);letter-spacing:.8px">DADOS FISCAIS (NFC-e / NF-e)</div>
+<div class="form-row cols-2">
+  <div class="form-group">
+    <label class="form-label">NCM</label>
+    <input class="input" id="pf-ncm" value="${p.ncm || ''}" placeholder="0000.00.00" maxlength="10">
+  </div>
+  <div class="form-group">
+    <label class="form-label">CFOP</label>
+    <input class="input" id="pf-cfop" value="${p.cfop || '5102'}" placeholder="5102">
+  </div>
+</div>
+<div class="form-row cols-2">
+  <div class="form-group">
+    <label class="form-label">CSOSN / CST (ICMS)</label>
+    <select class="input" id="pf-icms-cst">
+      <option value="400" ${(p.icms_cst||'400')==='400'?'selected':''}>400 — Tributado pelo Simples, sem crédito</option>
+      <option value="102" ${p.icms_cst==='102'?'selected':''}>102 — Tributado pelo Simples, sem permissão de crédito</option>
+      <option value="103" ${p.icms_cst==='103'?'selected':''}>103 — Isenção p/ faixa de receita</option>
+      <option value="300" ${p.icms_cst==='300'?'selected':''}>300 — Imune</option>
+      <option value="500" ${p.icms_cst==='500'?'selected':''}>500 — ICMS cobrado por substituição tributária</option>
+      <option value="900" ${p.icms_cst==='900'?'selected':''}>900 — Outros</option>
+      <option value="00"  ${p.icms_cst==='00' ?'selected':''}>00 — Tributada integralmente (Lucro Real/Presumido)</option>
+      <option value="40"  ${p.icms_cst==='40' ?'selected':''}>40 — Isenta (Lucro Real/Presumido)</option>
+      <option value="60"  ${p.icms_cst==='60' ?'selected':''}>60 — ICMS cobrado por ST</option>
+    </select>
+  </div>
+  <div class="form-group">
+    <label class="form-label">Origem (ICMS)</label>
+    <select class="input" id="pf-icms-origem">
+      <option value="0" ${(!p.icms_origem||p.icms_origem==0)?'selected':''}>0 — Nacional</option>
+      <option value="1" ${p.icms_origem==1?'selected':''}>1 — Estrangeira (importação direta)</option>
+      <option value="2" ${p.icms_origem==2?'selected':''}>2 — Estrangeira (adq. mercado interno)</option>
+    </select>
+  </div>
+</div>
+<div class="form-row cols-2">
+  <div class="form-group">
+    <label class="form-label">CST PIS</label>
+    <select class="input" id="pf-pis-cst">
+      <option value="07" ${(p.pis_cst||'07')==='07'?'selected':''}>07 — Operação isenta (Simples)</option>
+      <option value="01" ${p.pis_cst==='01'?'selected':''}>01 — Operação tributável 0,65%</option>
+      <option value="02" ${p.pis_cst==='02'?'selected':''}>02 — Operação tributável alíq. diferenciada</option>
+      <option value="06" ${p.pis_cst==='06'?'selected':''}>06 — Operação tributável a alíq. zero</option>
+      <option value="49" ${p.pis_cst==='49'?'selected':''}>49 — Outras operações de saída</option>
+    </select>
+  </div>
+  <div class="form-group">
+    <label class="form-label">CST COFINS</label>
+    <select class="input" id="pf-cofins-cst">
+      <option value="07" ${(p.cofins_cst||'07')==='07'?'selected':''}>07 — Operação isenta (Simples)</option>
+      <option value="01" ${p.cofins_cst==='01'?'selected':''}>01 — Operação tributável 3%</option>
+      <option value="02" ${p.cofins_cst==='02'?'selected':''}>02 — Operação tributável alíq. diferenciada</option>
+      <option value="06" ${p.cofins_cst==='06'?'selected':''}>06 — Operação tributável a alíq. zero</option>
+      <option value="49" ${p.cofins_cst==='49'?'selected':''}>49 — Outras operações de saída</option>
+    </select>
+  </div>
+</div>
+
 <div class="modal-actions">
   <button class="btn btn-ghost" onclick="Modal.close()">Cancelar</button>
   <button class="btn btn-primary" onclick="Produtos.salvar('${id || ''}')">Salvar</button>
@@ -206,17 +266,24 @@ const Produtos = {
   },
 
   async salvar(id) {
+    const g = (i) => document.getElementById(i);
     const dados = {
-      emoji: document.getElementById('pf-emoji').value,
-      nome: document.getElementById('pf-nome').value.trim(),
-      sku: document.getElementById('pf-sku').value.trim(),
-      ean: document.getElementById('pf-ean').value.trim(),
-      preco_venda: parseFloat(document.getElementById('pf-preco').value),
-      preco_custo: parseFloat(document.getElementById('pf-custo').value) || 0,
-      unidade: document.getElementById('pf-un').value || 'UN',
-      categoria: document.getElementById('pf-cat').value,
-      marca: document.getElementById('pf-marca').value,
+      emoji: g('pf-emoji').value,
+      nome: g('pf-nome').value.trim(),
+      sku: g('pf-sku').value.trim(),
+      ean: g('pf-ean').value.trim(),
+      preco_venda: parseFloat(g('pf-preco').value),
+      preco_custo: parseFloat(g('pf-custo').value) || 0,
+      unidade: g('pf-un').value || 'UN',
+      categoria: g('pf-cat').value,
+      marca: g('pf-marca').value,
       ativo: true,
+      ncm: g('pf-ncm').value.trim(),
+      cfop: g('pf-cfop').value.trim() || '5102',
+      icms_cst: g('pf-icms-cst').value || '400',
+      icms_origem: parseInt(g('pf-icms-origem').value) || 0,
+      pis_cst: g('pf-pis-cst').value || '07',
+      cofins_cst: g('pf-cofins-cst').value || '07',
     };
     if (!dados.nome || !dados.preco_venda) { Toast.show('Nome e preço são obrigatórios', 'error'); return; }
     if (id) { await window.pdv.produtos.atualizar(id, dados); Toast.show('Produto atualizado!', 'success'); }
