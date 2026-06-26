@@ -525,13 +525,32 @@ const produtos = {
     return true;
   },
 
-  // Upsert em lote para sync (muito mais rápido que inserções individuais)
+  // Upsert em lote para sync
   upsertBatch(lista) {
-    const stmtProd = db.prepare(`
-      INSERT OR REPLACE INTO produtos
+    const stmtInsert = db.prepare(`
+      INSERT OR IGNORE INTO produtos
       (id, remote_id, nome, nome_lower, sku, ean, preco_venda, preco_custo,
-       unidade, categoria, marca, foto_url, ativo, disponivel_pdv, permite_fracao, updated_at, synced_at, sync_status)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+       unidade, categoria, marca, foto_url, ativo, disponivel_pdv, permite_fracao,
+       ncm, cfop, icms_cst, icms_origem, pis_cst, cofins_cst,
+       updated_at, synced_at, sync_status)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    `);
+    // UPDATE que preserva campos fiscais locais quando pendentes
+    const stmtUpdate = db.prepare(`
+      UPDATE produtos SET
+        nome = ?, nome_lower = ?, sku = ?, ean = ?,
+        preco_venda = ?, preco_custo = ?, unidade = ?,
+        categoria = ?, marca = ?, foto_url = ?,
+        ativo = ?, disponivel_pdv = ?, permite_fracao = ?,
+        ncm        = CASE WHEN sync_status = 'pending' THEN ncm        ELSE ? END,
+        cfop       = CASE WHEN sync_status = 'pending' THEN cfop       ELSE ? END,
+        icms_cst   = CASE WHEN sync_status = 'pending' THEN icms_cst   ELSE ? END,
+        icms_origem= CASE WHEN sync_status = 'pending' THEN icms_origem ELSE ? END,
+        pis_cst    = CASE WHEN sync_status = 'pending' THEN pis_cst    ELSE ? END,
+        cofins_cst = CASE WHEN sync_status = 'pending' THEN cofins_cst ELSE ? END,
+        updated_at = ?, synced_at = ?,
+        sync_status = CASE WHEN sync_status = 'pending' THEN 'pending' ELSE 'synced' END
+      WHERE remote_id = ?
     `);
     const stmtEst = db.prepare(`
       INSERT OR REPLACE INTO estoque (id, produto_id, quantidade, quantidade_minima, updated_at)
@@ -540,14 +559,21 @@ const produtos = {
         ?, ?, ?, ?
       )
     `);
+    const stmtGetId = db.prepare('SELECT id FROM produtos WHERE remote_id = ?');
+
     const transaction = db.transaction((items) => {
       for (const p of items) {
-        // Verificar se já existe pelo remote_id
-        const existing = db.prepare('SELECT id FROM produtos WHERE remote_id = ?').get(p.id);
+        const existing = stmtGetId.get(p.id);
         const localId = existing?.id || uuidv4();
         const now = new Date().toISOString();
+        const ncm     = p.ncm       || null;
+        const cfop    = p.cfop      || null;
+        const icmsCst = p.icms_cst  || null;
+        const icmsOri = p.icms_origem !== undefined ? p.icms_origem : 0;
+        const pisCst  = p.pis_cst   || null;
+        const cofCst  = p.cofins_cst|| null;
 
-        stmtProd.run(
+        stmtInsert.run(
           localId, p.id,
           p.nome, p.nome?.toLowerCase(),
           p.sku || null, p.ean || null,
@@ -557,12 +583,27 @@ const produtos = {
           p.ativo !== false ? 1 : 0,
           p.disponivel_pdv !== false ? 1 : 0,
           p.permite_fracao ? 1 : 0,
+          ncm, cfop, icmsCst, icmsOri, pisCst, cofCst,
           p.updated_at || now, now, 'synced'
         );
 
-        // Atualizar estoque se vier no payload
+        stmtUpdate.run(
+          p.nome, p.nome?.toLowerCase(),
+          p.sku || null, p.ean || null,
+          p.preco_venda || 0, p.preco_custo || 0,
+          p.unidade || 'UN', p.categoria || null,
+          p.marca || null, p.foto_url || null,
+          p.ativo !== false ? 1 : 0,
+          p.disponivel_pdv !== false ? 1 : 0,
+          p.permite_fracao ? 1 : 0,
+          ncm, cfop, icmsCst, icmsOri, pisCst, cofCst,
+          p.updated_at || now, now,
+          p.id
+        );
+
         if (p.estoque !== undefined && p.estoque !== null) {
-          stmtEst.run(localId, uuidv4(), localId, p.estoque, p.estoque_minimo || 0, now);
+          const pid = stmtGetId.get(p.id)?.id || localId;
+          stmtEst.run(pid, uuidv4(), pid, p.estoque, p.estoque_minimo || 0, now);
         }
       }
     });
