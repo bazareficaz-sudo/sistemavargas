@@ -19,16 +19,22 @@ const App = (() => {
 
   async function showApp() {
     document.getElementById('login-screen').style.display = 'none';
-    document.getElementById('main-layout').style.display = 'flex';
     const usuario = await window.pdv.config.get('auth.usuario');
-    // null = offline/admin (sem restrições); objeto = permissões por chave
     window.PDV_PERMS = usuario?.permissoes || null;
     console.log('[PERMS]', JSON.stringify(window.PDV_PERMS));
     renderNavUser();
-    // Mostrar Carteira no menu apenas para quem tem permissão
     const navCarteira = document.getElementById('nav-carteira');
     if (navCarteira) navCarteira.style.display = podePermissao('receber_contas_clientes') ? 'flex' : 'none';
     _initApp();
+    // Mostrar launcher em vez de ir direto para o PDV
+    showLauncher();
+  }
+
+  function showLauncher() {
+    document.getElementById('main-layout').style.display = 'none';
+    const el = document.getElementById('launcher-screen');
+    el.style.display = 'block';
+    Launcher.init();
   }
 
   async function renderNavUser() {
@@ -207,7 +213,7 @@ const App = (() => {
     location.reload();
   }
 
-  return { init, navigate, syncNow, showApp, renderLogin, logout, atualizarBadgeFaltas };
+  return { init, navigate, syncNow, showApp, showLauncher, renderLogin, logout, atualizarBadgeFaltas };
 })();
 
 // ─── Toast ────────────────────────────────────────────────────────

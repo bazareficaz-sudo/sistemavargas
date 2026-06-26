@@ -1163,6 +1163,177 @@ const Vendas = {
   }
 };
 
+// ─── Launcher ─────────────────────────────────────────────────────
+const Launcher = {
+  _modulos: [
+    {
+      id: 'pdv',
+      icon: '🛒',
+      titulo: 'Frente de Caixa',
+      desc: 'Vendas no balcão, pagamentos e emissão de NFC-e',
+      tags: ['PDV', 'NFC-e'],
+      status: 'ativo',
+      cor: '#6c63ff',
+    },
+    {
+      id: 'gestao',
+      icon: '📊',
+      titulo: 'Gestão',
+      desc: 'Produtos, estoque, clientes, vendas e relatórios',
+      tags: ['Produtos', 'Estoque', 'Clientes'],
+      status: 'ativo',
+      cor: '#22c55e',
+    },
+    {
+      id: 'marketplace',
+      icon: '🛍️',
+      titulo: 'Marketplace',
+      desc: 'Integração com Mercado Livre, Shopee e outros canais',
+      tags: ['Mercado Livre', 'Shopee'],
+      status: 'breve',
+      cor: '#f59e0b',
+    },
+    {
+      id: 'fiscal',
+      icon: '📄',
+      titulo: 'Fiscal / NF-e',
+      desc: 'Emissão de NF-e, relatórios fiscais e SPED',
+      tags: ['NF-e', 'SPED'],
+      status: 'breve',
+      cor: '#3b82f6',
+    },
+    {
+      id: 'financeiro',
+      icon: '💰',
+      titulo: 'Financeiro',
+      desc: 'Contas a receber, fluxo de caixa e DRE',
+      tags: ['Contas', 'Fluxo de Caixa'],
+      status: 'breve',
+      cor: '#10b981',
+    },
+    {
+      id: 'bi',
+      icon: '📈',
+      titulo: 'Relatórios & BI',
+      desc: 'Dashboard de métricas, metas e desempenho de vendas',
+      tags: ['Dashboard', 'Metas'],
+      status: 'breve',
+      cor: '#ec4899',
+    },
+  ],
+
+  async render() {
+    const user = await window.pdv.config.get('auth.usuario');
+    const nome = user?.nome?.split(' ')[0] || 'Operador';
+    const empresa = user?.empresa_nome || 'Sistema Vargas';
+    const hora = new Date().getHours();
+    const saudacao = hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite';
+
+    const cards = this._modulos.map(m => {
+      const ativo = m.status === 'ativo';
+      const tags = m.tags.map(t => `<span style="
+        font-size:9px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;
+        background:rgba(255,255,255,.12);color:rgba(255,255,255,.7);
+        border-radius:4px;padding:2px 6px">${t}</span>`).join('');
+
+      return `
+      <div onclick="${ativo ? `Launcher.entrar('${m.id}')` : ''}" style="
+        background:var(--card);border:1px solid var(--border);border-radius:16px;
+        padding:28px 24px;cursor:${ativo ? 'pointer' : 'default'};
+        position:relative;overflow:hidden;
+        transition:transform .15s,box-shadow .15s,border-color .15s;
+        ${!ativo ? 'opacity:.55;filter:grayscale(.4)' : ''}
+      "
+      ${ativo ? `onmouseenter="this.style.transform='translateY(-3px)';this.style.boxShadow='0 12px 32px rgba(0,0,0,.18)';this.style.borderColor='${m.cor}44'"
+        onmouseleave="this.style.transform='';this.style.boxShadow='';this.style.borderColor=''"` : ''}>
+
+        <!-- barra de cor no topo -->
+        <div style="position:absolute;top:0;left:0;right:0;height:3px;background:${m.cor};border-radius:16px 16px 0 0"></div>
+
+        ${!ativo ? `<div style="position:absolute;top:14px;right:14px;background:var(--bg3);color:var(--text3);font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;border-radius:20px;padding:3px 10px;border:1px solid var(--border2)">EM BREVE</div>` : `<div style="position:absolute;top:14px;right:14px;background:${m.cor}22;color:${m.cor};font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;border-radius:20px;padding:3px 10px">● ATIVO</div>`}
+
+        <div style="font-size:36px;margin-bottom:14px;line-height:1">${m.icon}</div>
+        <div style="font-size:16px;font-weight:700;color:var(--text1);margin-bottom:6px">${m.titulo}</div>
+        <div style="font-size:12px;color:var(--text2);line-height:1.5;margin-bottom:14px;min-height:36px">${m.desc}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">${tags}</div>
+
+        ${ativo ? `<div style="margin-top:20px;display:flex;align-items:center;gap:6px;color:${m.cor};font-size:12px;font-weight:600">
+          Acessar <span style="font-size:16px">→</span>
+        </div>` : ''}
+      </div>`;
+    }).join('');
+
+    return `
+<div style="
+  min-height:100vh;width:100%;
+  background:var(--bg);
+  display:flex;flex-direction:column;
+  overflow-y:auto;
+">
+  <!-- Header -->
+  <div style="
+    padding:40px 48px 32px;
+    background:linear-gradient(135deg,var(--card) 0%,var(--bg) 100%);
+    border-bottom:1px solid var(--border);
+    display:flex;align-items:center;justify-content:space-between;
+  ">
+    <div>
+      <div style="font-size:11px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:var(--accent);margin-bottom:6px">${empresa}</div>
+      <div style="font-size:28px;font-weight:800;color:var(--text1);font-family:'Syne',sans-serif">${saudacao}, ${nome}! 👋</div>
+      <div style="font-size:13px;color:var(--text2);margin-top:4px">Selecione um módulo para continuar</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:16px">
+      <div style="text-align:right">
+        <div style="font-size:11px;color:var(--text3)">Sistema Vargas</div>
+        <div id="launcher-version" style="font-size:10px;color:var(--text3);opacity:.6"></div>
+      </div>
+      <button onclick="App.logout()" style="
+        background:var(--bg3);border:1px solid var(--border2);border-radius:10px;
+        padding:8px 16px;color:var(--text2);font-size:12px;cursor:pointer;
+      ">Sair</button>
+    </div>
+  </div>
+
+  <!-- Grid de módulos -->
+  <div style="
+    flex:1;padding:40px 48px;
+    display:grid;
+    grid-template-columns:repeat(auto-fill,minmax(280px,1fr));
+    gap:20px;
+    align-content:start;
+  ">
+    ${cards}
+  </div>
+
+  <!-- Rodapé -->
+  <div style="padding:20px 48px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+    <span style="font-size:11px;color:var(--text3)">© 2025 Sistema Vargas · Todos os direitos reservados</span>
+    <span id="launcher-sync" style="font-size:11px;color:var(--text3)"></span>
+  </div>
+</div>`;
+  },
+
+  async init() {
+    const el = document.getElementById('launcher-screen');
+    if (!el) return;
+    el.innerHTML = await this.render();
+    // versão
+    const ver = await window.pdv.app.version().catch(() => '');
+    const vEl = document.getElementById('launcher-version');
+    if (vEl && ver) vEl.textContent = `v${ver}`;
+  },
+
+  entrar(modulo) {
+    document.getElementById('launcher-screen').style.display = 'none';
+    document.getElementById('main-layout').style.display = 'flex';
+    if (modulo === 'pdv') {
+      App.navigate('pdv');
+    } else if (modulo === 'gestao') {
+      App.navigate('vendas');
+    }
+  },
+};
+
 // ─── Estoque ──────────────────────────────────────────────────────
 const Estoque = {
   render() {

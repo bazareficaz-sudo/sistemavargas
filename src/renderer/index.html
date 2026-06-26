@@ -42,6 +42,9 @@
       </div>
       <div class="nav-user" id="nav-user"></div>
       <div class="nav-links">
+        <button class="nav-btn" onclick="App.showLauncher()" style="color:var(--accent);border-bottom:1px solid var(--border);border-radius:0;margin-bottom:4px;padding-bottom:10px">
+          <span class="nav-icon">⬡</span><span>Módulos</span>
+        </button>
         <button class="nav-btn active" data-page="pdv" onclick="App.navigate('pdv')">
           <span class="nav-icon">🛒</span><span>PDV</span>
         </button>
@@ -85,6 +88,9 @@
 
   <!-- Tela de login -->
   <div id="login-screen"></div>
+
+  <!-- Launcher — seleção de módulo -->
+  <div id="launcher-screen" style="display:none"></div>
 
   <!-- Toast container -->
   <div id="toasts"></div>
