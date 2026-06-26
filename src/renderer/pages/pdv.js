@@ -455,12 +455,16 @@ const PDV = (() => {
     selecionarProduto(produto);
   }
 
-  function changeQty(produtoId, delta) {
+  async function changeQty(produtoId, delta) {
     const item = cart.find(i => i.produto_id === produtoId);
     if (!item) return;
     const novaQty = item.quantidade + delta;
     if (novaQty <= 0) { removeItem(produtoId); return; }
-    if (novaQty > item.estoque_max) { Toast.show('Sem estoque suficiente', 'warning'); return; }
+    const permiteNegativo = await window.pdv.config.get('config.vender_estoque_negativo') === true;
+    if (!permiteNegativo && novaQty > item.estoque_max) {
+      Toast.show(`Sem estoque suficiente. Disponível: ${item.estoque_max}`, 'warning');
+      return;
+    }
     item.quantidade = novaQty;
     item.total = novaQty * item.preco_unitario;
     renderCart();
