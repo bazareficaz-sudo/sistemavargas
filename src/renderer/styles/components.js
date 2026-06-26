@@ -198,7 +198,7 @@ const Produtos = {
     tbody.innerHTML = this._sortedData().map(p => {
       const cells = [];
       if (cols.foto)      cells.push(`<td style="padding:6px 8px">${p.foto_url?`<img src="${p.foto_url}" loading="lazy" onerror="this.style.display='none'" style="width:40px;height:40px;object-fit:cover;border-radius:6px;display:block">`:`<span style="font-size:24px;display:block;text-align:center">${p.emoji||'📦'}</span>`}</td>`);
-      if (cols.nome)      cells.push(`<td><span class="td-main">${p.nome}</span></td>`);
+      if (cols.nome)      cells.push(`<td><span class="td-main">${p.nome}</span>${!p.disponivel_pdv?'<br><span class="badge" style="background:var(--orange);color:#fff;font-size:10px">Fora PDV</span>':''}</td>`);
       if (cols.sku)       cells.push(`<td class="td-mono">${p.sku||'-'}<br><span style="color:var(--text3);font-size:10px">${p.ean||''}</span></td>`);
       if (cols.categoria) cells.push(`<td>${p.categoria?`<span class="badge badge-blue">${p.categoria}</span>`:'-'}</td>`);
       if (cols.preco)     cells.push(`<td class="td-price">R$ ${fmtMoney(p.preco_venda)}</td>`);
@@ -220,7 +220,7 @@ const Produtos = {
   },
 
   async load(query) {
-    this._data = await window.pdv.produtos.buscar(query);
+    this._data = await window.pdv.produtos.buscarGestao(query);
     this._renderTable();
   },
 
@@ -230,7 +230,7 @@ const Produtos = {
   },
 
   async openForm(id = null) {
-    let p = { emoji: '📦', nome: '', sku: '', ean: '', preco_venda: '', preco_custo: '', unidade: 'UN', categoria: '', marca: '', ativo: true };
+    let p = { emoji: '📦', nome: '', sku: '', ean: '', preco_venda: '', preco_custo: '', unidade: 'UN', categoria: '', marca: '', ativo: true, disponivel_pdv: true };
     if (id) { p = await window.pdv.produtos.getById(id) || p; }
 
     Modal.open(`
@@ -277,6 +277,14 @@ const Produtos = {
     <label class="form-label">Marca</label>
     <input class="input" id="pf-marca" value="${p.marca || ''}">
   </div>
+</div>
+
+<!-- Visibilidade -->
+<div style="margin:10px 0 6px;padding-top:12px;border-top:1px solid var(--border)">
+  <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+    <input type="checkbox" id="pf-disponivel" ${p.disponivel_pdv!==false?'checked':''}>
+    <span style="font-size:13px">Disponível no PDV (visível na busca de vendas)</span>
+  </label>
 </div>
 
 <!-- Dados Fiscais -->
@@ -363,6 +371,7 @@ const Produtos = {
       icms_origem: parseInt(g('pf-icms-origem').value) || 0,
       pis_cst: g('pf-pis-cst').value || '07',
       cofins_cst: g('pf-cofins-cst').value || '07',
+      disponivel_pdv: g('pf-disponivel').checked ? 1 : 0,
     };
     if (!dados.nome || !dados.preco_venda) { Toast.show('Nome e preço são obrigatórios', 'error'); return; }
     if (id) { await window.pdv.produtos.atualizar(id, dados); Toast.show('Produto atualizado!', 'success'); }

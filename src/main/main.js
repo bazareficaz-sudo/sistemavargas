@@ -90,6 +90,7 @@ ipcMain.handle('config:getAll', () => store.store);
 
 // Produtos
 ipcMain.handle('produtos:buscar', (_, query) => db.produtos.buscar(query));
+ipcMain.handle('produtos:buscarGestao', (_, query) => db.produtos.buscarGestao(query));
 ipcMain.handle('produtos:getById', (_, id) => db.produtos.getById(id));
 ipcMain.handle('produtos:getByEan', (_, ean) => db.produtos.getByEan(ean));
 ipcMain.handle('produtos:total', () => db.produtos.total());

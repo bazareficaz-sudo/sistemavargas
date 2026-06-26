@@ -455,8 +455,42 @@ const produtos = {
     `).get(ean);
   },
 
+  // Busca para tela de gestão — inclui produtos fora do PDV
+  buscarGestao(query) {
+    const filtro = 'p.ativo = 1';
+    if (!query || query.trim() === '') {
+      return db.prepare(`
+        SELECT p.*, e.quantidade as estoque
+        FROM produtos p
+        LEFT JOIN estoque e ON e.produto_id = p.id
+        WHERE ${filtro}
+        ORDER BY p.nome LIMIT 500
+      `).all();
+    }
+    const q = query.trim().toLowerCase();
+    const palavras = q.split(/\s+/).filter(Boolean);
+    if (palavras.length <= 1) {
+      return db.prepare(`
+        SELECT p.*, e.quantidade as estoque
+        FROM produtos p
+        LEFT JOIN estoque e ON e.produto_id = p.id
+        WHERE ${filtro} AND (p.nome_lower LIKE ? OR p.sku LIKE ? OR p.ean LIKE ? OR p.marca LIKE ?)
+        ORDER BY CASE WHEN p.nome_lower LIKE ? THEN 0 ELSE 1 END, p.nome LIMIT 500
+      `).all(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`, `${q}%`);
+    }
+    const conds = palavras.map(() => `p.nome_lower LIKE ?`).join(' AND ');
+    const params = palavras.map(w => `%${w}%`);
+    return db.prepare(`
+      SELECT p.*, e.quantidade as estoque
+      FROM produtos p
+      LEFT JOIN estoque e ON e.produto_id = p.id
+      WHERE ${filtro} AND ${conds}
+      ORDER BY p.nome LIMIT 500
+    `).all(...params);
+  },
+
   total() {
-    return db.prepare('SELECT COUNT(*) as total FROM produtos WHERE ativo = 1 AND disponivel_pdv = 1').get().total;
+    return db.prepare('SELECT COUNT(*) as total FROM produtos WHERE ativo = 1').get().total;
   },
 
   salvar(produto) {

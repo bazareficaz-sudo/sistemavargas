@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('pdv', {
   // Produtos
   produtos: {
     buscar: (query) => ipcRenderer.invoke('produtos:buscar', query),
+    buscarGestao: (query) => ipcRenderer.invoke('produtos:buscarGestao', query),
     getById: (id) => ipcRenderer.invoke('produtos:getById', id),
     getByEan: (ean) => ipcRenderer.invoke('produtos:getByEan', ean),
     total: () => ipcRenderer.invoke('produtos:total'),
