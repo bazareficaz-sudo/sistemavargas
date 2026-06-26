@@ -139,6 +139,14 @@ contextBridge.exposeInMainWorld('pdv', {
     danfe:    (reference)           => ipcRenderer.invoke('nfce:danfe', reference),
   },
 
+  // IA
+  ia: {
+    fiscal:   (nome, cat, un) => ipcRenderer.invoke('ia:fiscal', nome, cat, un),
+    descricao:(nome, cat, marca, un) => ipcRenderer.invoke('ia:descricao', nome, cat, marca, un),
+    lote:     (produtos) => ipcRenderer.invoke('ia:lote', produtos),
+    status:   () => ipcRenderer.invoke('ia:status'),
+  },
+
   // App
   app: {
     version: () => ipcRenderer.invoke('app:version'),

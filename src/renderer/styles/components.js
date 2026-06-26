@@ -119,6 +119,7 @@ const Produtos = {
       </div>
     </div>
     <button class="btn btn-ghost" onclick="Produtos.resync()" title="Re-sincronizar todos os produtos do Base44">↺ Re-sync</button>
+    <button class="btn btn-ghost" id="prod-ia-lote-btn" onclick="Produtos.enriquecerLote()" title="Preencher NCM/CFOP/ICMS com IA para produtos sem dados fiscais" style="color:var(--gold)">🤖 IA em Lote</button>
     <button class="btn btn-primary" onclick="Produtos.openForm()">+ Novo Produto</button>
   </div>
 </div>
@@ -208,7 +209,8 @@ const Produtos = {
       if (cols.ncm)       cells.push(`<td class="td-mono" style="font-size:12px">${p.ncm||'-'}</td>`);
       if (cols.cfop)      cells.push(`<td class="td-mono" style="font-size:12px">${p.cfop||'-'}</td>`);
       if (cols.status)    cells.push(`<td>${p.ativo?'<span class="badge badge-green">Ativo</span>':'<span class="badge badge-gray">Inativo</span>'}</td>`);
-      cells.push(`<td><button class="btn btn-ghost btn-sm" onclick="Produtos.openForm('${p.id}')">Editar</button></td>`);
+      cells.push(`<td style="white-space:nowrap"><button class="btn btn-ghost btn-sm" onclick="Produtos.openForm('${p.id}')">Editar</button>${!p.ncm?`<button class="btn btn-ghost btn-sm" style="color:var(--gold);margin-left:4px" onclick="Produtos.enriquecerIA('${p.id}','${p.nome.replace(/'/g,"\\'")}','${(p.categoria||'').replace(/'/g,"\\'")}','${(p.unidade||'UN')}')" title="Preencher dados fiscais com IA">🤖</button>`:''}
+</td>`);
       return `<tr>${cells.join('')}</tr>`;
     }).join('');
   },
@@ -242,6 +244,90 @@ const Produtos = {
     } finally {
       if (btn) { btn.disabled = false; btn.textContent = '↺ Re-sync'; }
     }
+  },
+
+  // IA: preencher campos fiscais no formulário aberto
+  async iaFiscalForm() {
+    const nome = document.getElementById('pf-nome')?.value?.trim();
+    const cat  = document.getElementById('pf-cat')?.value?.trim();
+    const un   = document.getElementById('pf-un')?.value?.trim();
+    if (!nome) { Toast.show('Informe o nome do produto primeiro', 'error'); return; }
+
+    const btn = document.getElementById('pf-ia-btn');
+    const status = document.getElementById('pf-ia-status');
+    if (btn) { btn.disabled = true; btn.textContent = '🤖 Consultando IA...'; }
+    if (status) { status.style.display = 'block'; status.textContent = 'Aguardando resposta da IA...'; }
+
+    try {
+      const r = await window.pdv.ia.fiscal(nome, cat, un);
+      const g = (id) => document.getElementById(id);
+      if (r.ncm)        { const el = g('pf-ncm');        if(el) el.value = r.ncm; }
+      if (r.cfop)       { const el = g('pf-cfop');       if(el) el.value = r.cfop; }
+      if (r.icms_cst)   { const el = g('pf-icms-cst');   if(el) el.value = r.icms_cst; }
+      if (r.icms_origem !== undefined) { const el = g('pf-icms-origem'); if(el) el.value = r.icms_origem; }
+      if (r.pis_cst)    { const el = g('pf-pis-cst');    if(el) el.value = r.pis_cst; }
+      if (r.cofins_cst) { const el = g('pf-cofins-cst'); if(el) el.value = r.cofins_cst; }
+      if (status && r.justificativa_ncm) {
+        status.textContent = `NCM ${r.ncm}: ${r.justificativa_ncm}`;
+        status.style.color = 'var(--green)';
+      }
+    } catch(e) {
+      if (status) { status.textContent = '⚠ ' + e.message; status.style.color = 'var(--red)'; }
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '🤖 Preencher com IA'; }
+    }
+  },
+
+  // IA: enriquecer produto individual direto da lista (sem abrir form)
+  async enriquecerIA(id, nome, categoria, unidade) {
+    try {
+      Toast.show(`🤖 Consultando IA para "${nome}"...`, 'info');
+      const r = await window.pdv.ia.fiscal(nome, categoria, unidade);
+      await window.pdv.produtos.atualizar(id, {
+        ncm: r.ncm, cfop: r.cfop, icms_cst: r.icms_cst,
+        icms_origem: r.icms_origem, pis_cst: r.pis_cst, cofins_cst: r.cofins_cst,
+      });
+      Toast.show(`NCM ${r.ncm} aplicado em "${nome}"`, 'success');
+      await this.load(document.getElementById('prod-search')?.value || '');
+    } catch(e) {
+      Toast.show('Erro IA: ' + e.message, 'error');
+    }
+  },
+
+  // IA: enriquecer em lote todos os produtos sem NCM
+  async enriquecerLote() {
+    const semNcm = this._data.filter(p => !p.ncm);
+    if (!semNcm.length) { Toast.show('Todos os produtos já têm NCM cadastrado', 'success'); return; }
+
+    const ok = await window.pdv.app.confirm(`Enriquecer ${semNcm.length} produto(s) sem NCM com IA? Isso pode levar alguns minutos.`);
+    if (!ok) return;
+
+    const btn = document.getElementById('prod-ia-lote-btn');
+    if (btn) { btn.disabled = true; btn.textContent = '🤖 Processando...'; }
+
+    // Processar em grupos de 20 para não ultrapassar context
+    const GRUPO = 20;
+    let ok_count = 0, err_count = 0;
+
+    for (let i = 0; i < semNcm.length; i += GRUPO) {
+      const grupo = semNcm.slice(i, i + GRUPO).map(p => ({ id: p.id, nome: p.nome, categoria: p.categoria, unidade: p.unidade }));
+      if (btn) btn.textContent = `🤖 ${i}/${semNcm.length}...`;
+      try {
+        const resultados = await window.pdv.ia.lote(grupo);
+        for (const r of resultados) {
+          if (!r.id || !r.ncm) continue;
+          await window.pdv.produtos.atualizar(r.id, {
+            ncm: r.ncm, cfop: r.cfop, icms_cst: r.icms_cst,
+            icms_origem: r.icms_origem, pis_cst: r.pis_cst, cofins_cst: r.cofins_cst,
+          });
+          ok_count++;
+        }
+      } catch(e) { err_count += grupo.length; }
+    }
+
+    Toast.show(`IA concluída: ${ok_count} produtos enriquecidos${err_count ? `, ${err_count} erros` : ''}`, ok_count ? 'success' : 'error');
+    if (btn) { btn.disabled = false; btn.textContent = '🤖 IA em Lote'; }
+    await this.load(document.getElementById('prod-search')?.value || '');
   },
 
   async openForm(id = null) {
@@ -303,7 +389,13 @@ const Produtos = {
 </div>
 
 <!-- Dados Fiscais -->
-<div style="margin:14px 0 8px;padding-top:14px;border-top:1px solid var(--border);font-size:11px;font-weight:700;color:var(--text3);letter-spacing:.8px">DADOS FISCAIS (NFC-e / NF-e)</div>
+<div style="margin:14px 0 8px;padding-top:14px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+  <span style="font-size:11px;font-weight:700;color:var(--text3);letter-spacing:.8px">DADOS FISCAIS (NFC-e / NF-e)</span>
+  <button class="btn btn-ghost btn-sm" id="pf-ia-btn" onclick="Produtos.iaFiscalForm()" style="font-size:12px;color:var(--gold)">
+    🤖 Preencher com IA
+  </button>
+</div>
+<div id="pf-ia-status" style="display:none;font-size:12px;color:var(--text2);margin-bottom:8px;padding:8px;background:var(--bg2);border-radius:6px"></div>
 <div class="form-row cols-2">
   <div class="form-group">
     <label class="form-label">NCM</label>
@@ -1402,6 +1494,21 @@ const Config = {
     <button class="btn btn-ghost btn-sm" style="margin-left:8px" onclick="Config.testarFiscal()">Testar conexão</button>
   </div>
 
+  <div class="card" style="margin-bottom:16px">
+    <div style="font-size:13px;font-weight:600;margin-bottom:4px">🤖 Inteligência Artificial</div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:14px">Usado para sugerir NCM, CFOP e dados fiscais automaticamente no cadastro de produtos</div>
+    <div id="cfg-ia-status-badge" style="display:none;margin-bottom:12px;padding:8px 12px;border-radius:8px;font-size:12px"></div>
+    <div class="form-group">
+      <label class="form-label">Chave API Anthropic (Claude)</label>
+      <input class="input" id="cfg-anthropic-key" type="password" placeholder="sk-ant-...">
+      <div style="font-size:11px;color:var(--text3);margin-top:4px">
+        Obtenha em <span style="color:var(--gold)">console.anthropic.com</span> → API Keys
+      </div>
+    </div>
+    <button class="btn btn-primary btn-sm" onclick="Config.salvarIA()">Salvar chave IA</button>
+    <button class="btn btn-ghost btn-sm" style="margin-left:8px" onclick="Config.testarIA()">Testar IA</button>
+  </div>
+
   <div class="card">
     <div style="font-size:13px;font-weight:600;margin-bottom:14px">👤 Sessão</div>
     <div id="cfg-session" style="font-size:13px;color:var(--text2);margin-bottom:12px">Carregando...</div>
@@ -1455,6 +1562,12 @@ const Config = {
       Última sync: ${status.ultima_sync ? new Date(status.ultima_sync).toLocaleString('pt-BR') : 'Nunca'}<br>
       Pendentes: ${status.pendentes || 0} operações`;
 
+    // IA — chave Anthropic
+    const iaKey = await window.pdv.config.get('config.anthropic_key') || '';
+    if (f('cfg-anthropic-key')) f('cfg-anthropic-key').value = iaKey ? '••••••••••••••••' : '';
+    const iaStatus = await window.pdv.ia.status();
+    this._atualizarBadgeIA(iaStatus.configurado);
+
     // Fiscal — token manual + ambiente; CNPJ/empresa vêm do login (Base44)
     if (f('cfg-fiscal-token'))    f('cfg-fiscal-token').value    = await window.pdv.config.get('config.fiscal_token')    || '';
     if (f('cfg-fiscal-ambiente')) f('cfg-fiscal-ambiente').value = await window.pdv.config.get('config.fiscal_ambiente') || 'homologacao';
@@ -1489,6 +1602,40 @@ const Config = {
           <div><span style="color:var(--text3);font-size:11px">EMPRESA FISCAL (NFC-e / NF-e)</span><br><strong>${emFiscal}</strong>${user.empresa_fiscal_cnpj ? ` <span style="color:var(--text3);font-size:11px">· CNPJ ${user.empresa_fiscal_cnpj}</span>` : ''}</div>
           <div><span style="color:var(--text3);font-size:11px">ESTOQUE / DEPÓSITO</span><br><strong>${emEstoque}</strong> · ${dep}${user.unificar_estoque ? ' <span style="color:var(--accent);font-size:10px">(unificado)</span>' : ''}</div>
         </div>`;
+    }
+  },
+
+  async salvarIA() {
+    const key = document.getElementById('cfg-anthropic-key')?.value.trim();
+    if (!key) { Toast.show('Informe a chave API', 'error'); return; }
+    await window.pdv.config.set('config.anthropic_key', key);
+    Toast.show('Chave IA salva!', 'success');
+    this._atualizarBadgeIA(true);
+  },
+
+  async testarIA() {
+    const btn = document.querySelector('[onclick="Config.testarIA()"]');
+    if (btn) { btn.disabled = true; btn.textContent = 'Testando...'; }
+    try {
+      const r = await window.pdv.ia.fiscal('CIMENTO CP-3 VOTORAM 50KG', 'Material Construção', 'UN');
+      Toast.show(`IA OK! NCM sugerido: ${r.ncm}`, 'success');
+    } catch(e) {
+      Toast.show('Erro: ' + e.message, 'error');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = 'Testar IA'; }
+    }
+  },
+
+  _atualizarBadgeIA(configurado) {
+    const el = document.getElementById('cfg-ia-status-badge');
+    if (!el) return;
+    el.style.display = 'block';
+    if (configurado) {
+      el.style.background = 'rgba(34,197,94,.15)'; el.style.color = 'var(--green)';
+      el.textContent = '✓ IA configurada e pronta para uso';
+    } else {
+      el.style.background = 'rgba(251,191,36,.1)'; el.style.color = 'var(--orange)';
+      el.textContent = '⚠ Chave API não configurada — IA indisponível';
     }
   },
 

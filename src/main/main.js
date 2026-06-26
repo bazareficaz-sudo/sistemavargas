@@ -14,6 +14,7 @@ const printServer = require('./print-server');
 const tunnel = require('./tunnel');
 const updater = require('./updater');
 const focusnfe = require('./focusnfe');
+const ia = require('./ia');
 
 nativeTheme.themeSource = 'dark';
 
@@ -192,6 +193,12 @@ ipcMain.handle('faltas:registrar', (_, falta) => db.faltas.registrar(falta));
 ipcMain.handle('faltas:listar', (_, filtros) => db.faltas.listar(filtros));
 ipcMain.handle('faltas:atualizarStatus', (_, id, status) => db.faltas.atualizarStatus(id, status));
 ipcMain.handle('faltas:contarPendentes', () => db.faltas.contarPendentes());
+
+// IA
+ipcMain.handle('ia:fiscal', async (_, nome, categoria, unidade) => ia.sugerirFiscal(nome, categoria, unidade));
+ipcMain.handle('ia:descricao', async (_, nome, categoria, marca, unidade) => ia.gerarDescricao(nome, categoria, marca, unidade));
+ipcMain.handle('ia:lote', async (_, produtos) => ia.enriquecerLote(produtos));
+ipcMain.handle('ia:status', () => ({ configurado: !!ia.getApiKey() }));
 
 // Sync
 ipcMain.handle('sync:status', () => sync.getStatus());
