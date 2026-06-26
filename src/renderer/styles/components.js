@@ -1233,7 +1233,7 @@ const Launcher = {
       const ativo = m.status === 'ativo';
       const tags = m.tags.map(t => `<span style="
         font-size:9px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;
-        background:rgba(255,255,255,.12);color:rgba(255,255,255,.7);
+        background:${m.cor}18;color:${m.cor};border:1px solid ${m.cor}33;
         border-radius:4px;padding:2px 6px">${t}</span>`).join('');
 
       return `
