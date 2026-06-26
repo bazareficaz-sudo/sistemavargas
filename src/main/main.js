@@ -361,9 +361,11 @@ ipcMain.handle('nfce:emitir', async (_, venda) => {
     // Enriquecer itens com dados fiscais do produto local (NCM, CFOP, CSTs)
     if (venda.itens && venda.itens.length) {
       venda.itens = venda.itens.map(item => {
+        console.log('[NFCe] item produto_id:', item.produto_id, '| ncm no item:', item.ncm);
         const prod = item.produto_id
           ? db.db().prepare('SELECT ncm, cfop, icms_cst, icms_origem, pis_cst, cofins_cst, unidade FROM produtos WHERE id = ? OR remote_id = ?').get(item.produto_id, item.produto_id)
           : null;
+        console.log('[NFCe] produto encontrado:', prod ? `ncm=${prod.ncm}` : 'NÃO ENCONTRADO');
         return {
           ...item,
           ncm:        (prod?.ncm        || item.ncm        || '').replace(/\D/g, ''),
