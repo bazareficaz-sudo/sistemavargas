@@ -60,7 +60,7 @@ function montarPayload(venda) {
     numero_item:               idx + 1,
     codigo_produto:            item.produto_sku || item.produto_id,
     descricao:                 item.produto_nome,
-    ncm:                       item.ncm || '00000000',
+    ncm:                       (item.ncm || '').replace(/\D/g, '') || undefined,
     cfop:                      item.cfop || '5102',
     unidade_comercial:         item.unidade || 'UN',
     quantidade_comercial:      item.quantidade,

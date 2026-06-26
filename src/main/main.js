@@ -358,6 +358,24 @@ ipcMain.handle('tunnel:status', () => tunnel.getStatus());
 // NFC-e / FocusNFe
 ipcMain.handle('nfce:emitir', async (_, venda) => {
   try {
+    // Enriquecer itens com dados fiscais do produto local (NCM, CFOP, CSTs)
+    if (venda.itens && venda.itens.length) {
+      venda.itens = venda.itens.map(item => {
+        const prod = item.produto_id
+          ? db.db().prepare('SELECT ncm, cfop, icms_cst, icms_origem, pis_cst, cofins_cst, unidade FROM produtos WHERE id = ? OR remote_id = ?').get(item.produto_id, item.produto_id)
+          : null;
+        return {
+          ...item,
+          ncm:        (prod?.ncm        || item.ncm        || '').replace(/\D/g, ''),
+          cfop:       prod?.cfop        || item.cfop        || '5102',
+          icms_cst:   prod?.icms_cst    || item.icms_cst    || '400',
+          icms_origem:prod?.icms_origem ?? item.icms_origem ?? 0,
+          pis_cst:    prod?.pis_cst     || item.pis_cst     || '07',
+          cofins_cst: prod?.cofins_cst  || item.cofins_cst  || '07',
+          unidade:    prod?.unidade     || item.unidade      || 'UN',
+        };
+      });
+    }
     return await focusnfe.emitirNFCe(venda);
   } catch (err) {
     return { ok: false, erro: err.message };
