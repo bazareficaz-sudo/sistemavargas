@@ -95,6 +95,8 @@ async function syncNow(win) {
     await processarFilaSync();
     // 4. Recuperar vendas que falharam e saíram da fila sem sincronizar
     await recuperarVendasPendentes();
+    // 5. Enviar produtos alterados localmente (NCM, CFOP, fiscal, etc.) para o Base44
+    await syncUpProdutos();
 
     // Atualizar timestamps
     const agora = new Date().toISOString();
@@ -469,6 +471,37 @@ async function recuperarVendasPendentes() {
   }
 }
 
+// ─── Upload: produtos alterados localmente → Base44 ──────────────
+async function syncUpProdutos() {
+  const pendentes = db.db().prepare(`
+    SELECT id, remote_id, nome, ncm, cfop, icms_cst, icms_origem,
+           pis_cst, cofins_cst, disponivel_pdv, preco_venda, preco_custo,
+           categoria, marca, unidade
+    FROM produtos
+    WHERE sync_status = 'pending' AND remote_id IS NOT NULL
+    LIMIT 100
+  `).all();
+
+  if (!pendentes.length) return;
+
+  console.log(`[SYNC] Produtos: enviando ${pendentes.length} alterações para o Base44`);
+  const now = new Date().toISOString();
+  let ok = 0;
+
+  for (const p of pendentes) {
+    try {
+      await api.atualizarProduto(p.remote_id, p);
+      db.db().prepare(`UPDATE produtos SET sync_status = 'synced', synced_at = ? WHERE id = ?`)
+        .run(now, p.id);
+      ok++;
+    } catch(err) {
+      console.error(`[SYNC] Produto "${p.nome}" erro:`, err.message);
+      db.db().prepare(`UPDATE produtos SET sync_status = 'error' WHERE id = ?`).run(p.id);
+    }
+  }
+  if (ok) console.log(`[SYNC] Produtos: ${ok} atualizados no Base44`);
+}
+
 // ─── Sync leve: só envia a fila pendente (usado após cada venda) ──
 async function syncFila(win) {
   if (isSyncing) return; // sync completo já em andamento, não duplicar
@@ -480,6 +513,7 @@ async function syncFila(win) {
   try {
     await recuperarClientesPendentes();
     await processarFilaSync();
+    await syncUpProdutos();
     syncStatus.pendentes = db.sync.getPendentes().length;
     emitir(mainWindowRef, 'sync:update', syncStatus);
     console.log('[SYNC] Fila enviada após venda');

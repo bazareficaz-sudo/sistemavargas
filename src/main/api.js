@@ -562,6 +562,26 @@ async function sincronizarEstoque(ultimaSync = null) {
   return items;
 }
 
+// Atualiza campos de um produto no Base44 (remote_id obrigatório)
+async function atualizarProduto(remoteId, dados) {
+  // Mapeia campos locais → campos Base44
+  const payload = {};
+  if (dados.ncm        !== undefined) payload.ncm         = dados.ncm;
+  if (dados.cfop       !== undefined) payload.cfop        = dados.cfop;
+  if (dados.icms_cst   !== undefined) payload.csosn       = dados.icms_cst;
+  if (dados.icms_origem!== undefined) payload.origem      = String(dados.icms_origem || 0);
+  if (dados.pis_cst    !== undefined) payload.cst_pis     = dados.pis_cst;
+  if (dados.cofins_cst !== undefined) payload.cst_cofins  = dados.cofins_cst;
+  if (dados.disponivel_pdv !== undefined) payload.disponivel_pdv = !!dados.disponivel_pdv;
+  if (dados.nome       !== undefined) payload.nome        = dados.nome;
+  if (dados.preco_venda!== undefined) payload.preco_venda = dados.preco_venda;
+  if (dados.preco_custo!== undefined) payload.custo       = dados.preco_custo;
+  if (dados.categoria  !== undefined) payload.categoria   = dados.categoria;
+  if (dados.marca      !== undefined) payload.marca       = dados.marca;
+  if (dados.unidade    !== undefined) payload.unidade     = dados.unidade;
+  return await put(`/entities/Produto/${remoteId}`, payload);
+}
+
 module.exports = {
   registrarFalta,
   atualizarFalta,
@@ -591,4 +611,5 @@ module.exports = {
   registrarEntrega,
   listarEntregasRemoto,
   atualizarEntrega,
+  atualizarProduto,
 };
