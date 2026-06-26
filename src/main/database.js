@@ -314,6 +314,7 @@ function runMigrations() {
     'ALTER TABLE vendas ADD COLUMN updated_at TEXT',
     'ALTER TABLE entregas ADD COLUMN referencia TEXT',
     'ALTER TABLE entregas ADD COLUMN cliente_documento TEXT',
+    'ALTER TABLE produtos ADD COLUMN emoji TEXT DEFAULT \'📦\'',
     'ALTER TABLE produtos ADD COLUMN ncm TEXT',
     'ALTER TABLE produtos ADD COLUMN cfop TEXT DEFAULT \'5102\'',
     'ALTER TABLE produtos ADD COLUMN icms_cst TEXT DEFAULT \'400\'',

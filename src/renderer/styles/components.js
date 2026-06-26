@@ -295,7 +295,7 @@ const Produtos = {
 
     const bar = document.getElementById('prod-sel-bar');
     const countEl = document.getElementById('prod-sel-count');
-    const GRUPO = 20;
+    const GRUPO = 10;
     let ok_count = 0, err_count = 0;
 
     for (let i = 0; i < selecionados.length; i += GRUPO) {
@@ -397,7 +397,7 @@ const Produtos = {
     if (btn) { btn.disabled = true; btn.textContent = '🤖 Processando...'; }
 
     // Processar em grupos de 20 para não ultrapassar context
-    const GRUPO = 20;
+    const GRUPO = 10;
     let ok_count = 0, err_count = 0;
 
     for (let i = 0; i < semNcm.length; i += GRUPO) {

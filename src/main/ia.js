@@ -122,9 +122,22 @@ Regras:
 - Inclua TODOS os produtos na resposta, na mesma ordem`;
 
   const texto = await callClaude(prompt);
+  // Tentar extrair array JSON mesmo com texto antes/depois
   const match = texto.match(/\[[\s\S]*\]/);
-  if (!match) throw new Error('IA não retornou JSON válido');
-  return JSON.parse(match[0]);
+  if (!match) {
+    console.error('[IA] Resposta lote inválida:', texto.slice(0, 300));
+    throw new Error('IA não retornou JSON válido');
+  }
+  try {
+    return JSON.parse(match[0]);
+  } catch(e) {
+    // Tentar extrair objetos individuais se o array estiver cortado
+    const objetos = [...match[0].matchAll(/\{[^{}]*"id"[^{}]*\}/g)].map(m => {
+      try { return JSON.parse(m[0]); } catch { return null; }
+    }).filter(Boolean);
+    if (objetos.length) return objetos;
+    throw new Error('IA retornou JSON malformado');
+  }
 }
 
 module.exports = { sugerirFiscal, gerarDescricao, enriquecerLote, getApiKey };
