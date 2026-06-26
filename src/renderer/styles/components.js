@@ -220,7 +220,7 @@ const Produtos = {
   },
 
   async load(query) {
-    this._data = await window.pdv.produtos.buscarGestao(query);
+    this._data = (await window.pdv.produtos.buscarGestao(query)) || [];
     this._renderTable();
   },
 
