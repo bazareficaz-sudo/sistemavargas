@@ -123,7 +123,7 @@ async function syncNow(win) {
 // Mapeia campos do Base44 → schema local SQLite
 function mapProduto(p) {
   return {
-    id:          p.id,           // remote_id no upsertBatch
+    id:          p.id,
     nome:        p.nome,
     sku:         p.sku         || null,
     ean:         p.ean         || null,
@@ -134,12 +134,18 @@ function mapProduto(p) {
     marca:       p.marca       || null,
     foto_url:    p.imagem_url  || null,
     ativo:          p.ativo !== false,
-    // disponivel_pdv: null/undefined = disponível (padrão), false = oculto no PDV
     disponivel_pdv: p.disponivel_pdv !== false,
     permite_fracao: p.unidade === 'KG' || p.unidade === 'LT' || p.unidade === 'MT',
     updated_at:     p.updated_date || new Date().toISOString(),
-    estoque:     p.estoque      || 0,
+    estoque:        p.estoque      || 0,
     estoque_minimo: p.estoque_minimo || 0,
+    // Campos fiscais do Base44
+    ncm:       p.ncm       || null,
+    cfop:      p.cfop      || null,
+    icms_cst:  p.csosn     || p.cst_icms || null,
+    icms_origem: parseInt(p.origem) || 0,
+    pis_cst:   p.cst_pis   || null,
+    cofins_cst:p.cst_cofins|| null,
   };
 }
 

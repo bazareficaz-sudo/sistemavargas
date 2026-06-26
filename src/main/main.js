@@ -199,6 +199,13 @@ ipcMain.handle('sync:now', async () => {
   const result = await sync.syncNow(mainWindow);
   return result;
 });
+ipcMain.handle('sync:fullProdutos', async () => {
+  // Zera o timestamp de produtos para forçar re-sync completo
+  const Store = require('electron-store');
+  const s = new Store();
+  s.delete('sync.ultima_sync_produtos');
+  return await sync.syncNow(mainWindow);
+});
 ipcMain.handle('sync:pendentes', () => db.sync.getPendentes());
 
 // Auth

@@ -118,6 +118,7 @@ const Produtos = {
         </label>`).join('')}
       </div>
     </div>
+    <button class="btn btn-ghost" onclick="Produtos.resync()" title="Re-sincronizar todos os produtos do Base44">↺ Re-sync</button>
     <button class="btn btn-primary" onclick="Produtos.openForm()">+ Novo Produto</button>
   </div>
 </div>
@@ -227,6 +228,20 @@ const Produtos = {
   search(val) {
     clearTimeout(this.searchTimeout);
     this.searchTimeout = setTimeout(() => this.load(val), 150);
+  },
+
+  async resync() {
+    const btn = document.querySelector('[onclick="Produtos.resync()"]');
+    if (btn) { btn.disabled = true; btn.textContent = '↺ Sincronizando...'; }
+    try {
+      await window.pdv.sync.fullProdutos();
+      Toast.show('Produtos re-sincronizados com sucesso!', 'success');
+      await this.load(document.getElementById('prod-search')?.value || '');
+    } catch(e) {
+      Toast.show('Erro ao re-sincronizar: ' + e.message, 'error');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '↺ Re-sync'; }
+    }
   },
 
   async openForm(id = null) {

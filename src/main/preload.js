@@ -75,6 +75,7 @@ contextBridge.exposeInMainWorld('pdv', {
   sync: {
     status: () => ipcRenderer.invoke('sync:status'),
     now: () => ipcRenderer.invoke('sync:now'),
+    fullProdutos: () => ipcRenderer.invoke('sync:fullProdutos'),
     pendentes: () => ipcRenderer.invoke('sync:pendentes'),
     onUpdate: (cb) => ipcRenderer.on('sync:update', (_, data) => cb(data)),
   },
