@@ -741,6 +741,10 @@ const Clientes = {
 // ─── Vendas ───────────────────────────────────────────────────────
 const Vendas = {
   _todoTerminais: false,
+  _sortCol: 'data',
+  _sortDir: 'desc',
+  _sel: new Set(),
+  _lista: [],
 
   render() {
     const podeVerTodos = podePermissao('ver_vendas_todos_terminais');
@@ -753,68 +757,142 @@ const Vendas = {
       <input type="checkbox" id="venda-todos-terminais" onchange="Vendas.toggleTodos(this.checked)" style="cursor:pointer">
       Todos os terminais
     </label>` : ''}
+    <input class="input" id="venda-busca-produto" type="text" placeholder="🔍 Buscar por produto..." style="min-width:200px" oninput="Vendas.load()">
     <input class="input" id="venda-data" type="date" value="${new Date().toISOString().split('T')[0]}" onchange="Vendas.load()">
   </div>
 </div>
 <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:grid;grid-template-columns:repeat(4,1fr);gap:12px" id="vendas-totais"></div>
+<div id="vendas-sel-bar" style="display:none;padding:10px 20px;background:var(--accent);color:#fff;display:none;align-items:center;gap:12px;font-size:13px">
+  <span id="vendas-sel-count"></span>
+  <button class="btn btn-sm" style="background:rgba(255,255,255,.2);color:#fff;border:none" onclick="Vendas.nfceLote()">🧾 Emitir NFC-e Selecionadas</button>
+  <button class="btn btn-sm" style="background:rgba(255,255,255,.1);color:#fff;border:none;margin-left:auto" onclick="Vendas.desmarcarTodas()">✕ Desmarcar</button>
+</div>
 <div style="flex:1;overflow:auto">
   <div class="table-wrap">
-    <table>
-      <thead><tr><th>#</th><th>Hora</th><th>Terminal</th><th>Cliente</th><th>Pagamento</th><th>Total</th><th>Status</th><th>Nuvem</th><th></th></tr></thead>
+    <table id="vendas-table">
+      <thead id="vendas-thead"></thead>
       <tbody id="vendas-tbody"></tbody>
     </table>
   </div>
 </div>`;
   },
 
-  async init() { this._todoTerminais = false; await this.load(); },
+  async init() { this._todoTerminais = false; this._sel = new Set(); this._lista = []; await this.load(); },
 
-  toggleTodos(val) { this._todoTerminais = val; this.load(); },
+  toggleTodos(val) { this._todoTerminais = val; this._sel = new Set(); this.load(); },
+
+  _thSort(col, label) {
+    const ativo = this._sortCol === col;
+    const icone = ativo ? (this._sortDir === 'asc' ? ' ▲' : ' ▼') : '';
+    return `<th style="cursor:pointer;white-space:nowrap;user-select:none" onclick="Vendas.ordenar('${col}')">${label}${icone}</th>`;
+  },
+
+  ordenar(col) {
+    if (this._sortCol === col) {
+      this._sortDir = this._sortDir === 'asc' ? 'desc' : 'asc';
+    } else {
+      this._sortCol = col;
+      this._sortDir = col === 'total' ? 'desc' : 'asc';
+    }
+    this._renderTabela();
+  },
+
+  _sortLista(lista) {
+    const col = this._sortCol;
+    const dir = this._sortDir === 'asc' ? 1 : -1;
+    return [...lista].sort((a, b) => {
+      let va, vb;
+      if (col === 'data') {
+        va = a.created_at || a.created_date || '';
+        vb = b.created_at || b.created_date || '';
+      } else if (col === 'total') {
+        va = a.total || 0; vb = b.total || 0;
+      } else if (col === 'cliente') {
+        va = (a.cliente_nome || '').toLowerCase();
+        vb = (b.cliente_nome || '').toLowerCase();
+      } else if (col === 'numero') {
+        va = a.numero || 0; vb = b.numero || 0;
+      } else if (col === 'status') {
+        va = a.status || ''; vb = b.status || '';
+      } else if (col === 'pagamento') {
+        va = a.forma_pagamento || ''; vb = b.forma_pagamento || '';
+      } else {
+        va = ''; vb = '';
+      }
+      if (va < vb) return -dir;
+      if (va > vb) return dir;
+      return 0;
+    });
+  },
+
+  _atualizarBarraSel() {
+    const bar = document.getElementById('vendas-sel-bar');
+    const cnt = document.getElementById('vendas-sel-count');
+    if (!bar) return;
+    if (this._sel.size > 0) {
+      bar.style.display = 'flex';
+      cnt.textContent = `${this._sel.size} venda(s) selecionada(s)`;
+    } else {
+      bar.style.display = 'none';
+    }
+  },
+
+  toggleSel(id, el) {
+    if (el.checked) this._sel.add(id);
+    else this._sel.delete(id);
+    this._atualizarBarraSel();
+  },
+
+  toggleTodasSel(el) {
+    const lista = this._lista.filter(v => v.status !== 'cancelada');
+    if (el.checked) lista.forEach(v => this._sel.add(v.id || v.remote_id));
+    else this._sel.clear();
+    this._atualizarBarraSel();
+    this._renderTabela();
+  },
+
+  desmarcarTodas() {
+    this._sel.clear();
+    this._atualizarBarraSel();
+    this._renderTabela();
+  },
 
   async load() {
     const data = document.getElementById('venda-data')?.value || new Date().toISOString().split('T')[0];
     const tbody = document.getElementById('vendas-tbody');
     if (!tbody) return;
+    this._sel = new Set();
+    this._atualizarBarraSel();
 
     if (this._todoTerminais) {
-      // ── Modo cloud: todos os terminais ──────────────────────────
-      tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--text3)">Carregando...</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:20px;color:var(--text3)">Carregando...</td></tr>';
       try {
         const lista = await window.pdv.vendas.listarCloud(data);
+        this._lista = lista;
 
         const tt = document.getElementById('vendas-totais');
         if (tt && podePermissao('ver_total_vendas_dia')) {
-          const totalValor = lista.filter(v => v.status !== 'cancelada').reduce((s, v) => s + (v.total || 0), 0);
-          const totalQtd   = lista.filter(v => v.status !== 'cancelada').length;
-          const pix        = lista.filter(v => v.status !== 'cancelada' && v.forma_pagamento === 'pix').reduce((s, v) => s + (v.total || 0), 0);
-          const dinheiro   = lista.filter(v => v.status !== 'cancelada' && v.forma_pagamento === 'dinheiro').reduce((s, v) => s + (v.total || 0), 0);
-          const cartao     = lista.filter(v => v.status !== 'cancelada' && ['credito','debito','cartao_credito','cartao_debito'].includes(v.forma_pagamento)).reduce((s, v) => s + (v.total || 0), 0);
+          const ativos  = lista.filter(v => v.status !== 'cancelada');
+          const totalValor = ativos.reduce((s, v) => s + (v.total || 0), 0);
+          const pix        = ativos.filter(v => v.forma_pagamento === 'pix').reduce((s, v) => s + (v.total || 0), 0);
+          const dinheiro   = ativos.filter(v => v.forma_pagamento === 'dinheiro').reduce((s, v) => s + (v.total || 0), 0);
+          const cartao     = ativos.filter(v => ['credito','debito','cartao_credito','cartao_debito'].includes(v.forma_pagamento)).reduce((s, v) => s + (v.total || 0), 0);
           tt.innerHTML = `
             <div class="card"><div class="card-label">Total Vendas</div><div class="card-value">R$ ${fmtMoney(totalValor)}</div></div>
-            <div class="card"><div class="card-label">Transações</div><div class="card-value">${totalQtd}</div></div>
+            <div class="card"><div class="card-label">Transações</div><div class="card-value">${ativos.length}</div></div>
             <div class="card"><div class="card-label">PIX + Dinheiro</div><div class="card-value">R$ ${fmtMoney(pix + dinheiro)}</div></div>
             <div class="card"><div class="card-label">Cartão</div><div class="card-value">R$ ${fmtMoney(cartao)}</div></div>`;
         } else if (tt) { tt.innerHTML = ''; }
 
-        tbody.innerHTML = lista.map(v => `
-          <tr>
-            <td class="td-mono td-main">#${v.numero || '—'}</td>
-            <td style="font-size:12px">${v.created_date ? new Date(v.created_date).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) : '—'}</td>
-            <td style="font-size:11px;color:var(--text3)">${v.terminal_id || '—'}</td>
-            <td>${v.cliente_nome || '<span style="color:var(--text3)">—</span>'}</td>
-            <td><span class="badge ${v.forma_pagamento==='pix'?'badge-green':v.forma_pagamento==='dinheiro'?'badge-yellow':'badge-blue'}">${v.forma_pagamento || '—'}</span></td>
-            <td class="td-price">R$ ${fmtMoney(v.total)}</td>
-            <td>${v.status==='cancelada'?'<span class="badge badge-red">Cancelada</span>':'<span class="badge badge-green">Concluída</span>'}</td>
-            <td><span class="badge badge-green" title="Sincronizado">☁ Sync</span></td>
-            <td><button class="btn btn-ghost btn-sm" onclick="Vendas.imprimirCloud(${JSON.stringify(v).replace(/"/g,'&quot;')})">🖨️</button></td>
-          </tr>`).join('') || '<tr><td colspan="9"><div class="empty-state"><div class="icon">🧾</div><h3>Sem vendas nesta data</h3></div></td></tr>';
+        this._renderTabela();
       } catch(e) {
-        tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--red)">Erro ao carregar: ${e.message}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:20px;color:var(--red)">Erro ao carregar: ${e.message}</td></tr>`;
       }
     } else {
-      // ── Modo local: este terminal ───────────────────────────────
-      const lista  = await window.pdv.vendas.listar({ data_inicio: data, data_fim: data });
+      const buscaProduto = document.getElementById('venda-busca-produto')?.value?.trim() || '';
+      const lista  = await window.pdv.vendas.listar({ data_inicio: data, data_fim: data, ...(buscaProduto ? { produto: buscaProduto } : {}) });
       const totais = await window.pdv.vendas.totaisHoje();
+      this._lista = lista;
 
       const tt = document.getElementById('vendas-totais');
       if (tt) tt.innerHTML = podePermissao('ver_total_vendas_dia') ? `
@@ -823,28 +901,113 @@ const Vendas = {
         <div class="card"><div class="card-label">PIX + Dinheiro</div><div class="card-value">R$ ${fmtMoney((totais?.pix||0)+(totais?.dinheiro||0))}</div></div>
         <div class="card"><div class="card-label">Cartão</div><div class="card-value">R$ ${fmtMoney(totais?.cartao)}</div></div>` : '';
 
-      tbody.innerHTML = lista.map(v => `
-        <tr>
-          <td class="td-mono td-main">#${v.numero}</td>
-          <td style="font-size:12px">${new Date(v.created_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</td>
-          <td style="font-size:11px;color:var(--text3)">Este terminal</td>
-          <td>${v.cliente_nome || '<span style="color:var(--text3)">—</span>'}</td>
-          <td><span class="badge ${v.forma_pagamento==='pix'?'badge-green':v.forma_pagamento==='dinheiro'?'badge-yellow':'badge-blue'}">${v.forma_pagamento}</span></td>
-          <td class="td-price">R$ ${fmtMoney(v.total)}</td>
-          <td>${v.status==='cancelada'?'<span class="badge badge-red">Cancelada</span>':'<span class="badge badge-green">Concluída</span>'}</td>
-          <td>${v.remote_id
-            ? '<span class="badge badge-green" title="Sincronizado com o sistema Vargas">☁ Sync</span>'
-            : v.sync_status==='pending'
-              ? '<span class="badge badge-yellow" title="Aguardando sincronização">⏳ Pendente</span>'
-              : '<span class="badge badge-red" title="Erro na sincronização">✕ Erro</span>'}</td>
-          <td style="display:flex;gap:4px;flex-wrap:wrap">
-            <button class="btn btn-ghost btn-sm" onclick="Vendas.imprimir('${v.id}')" title="Imprimir comprovante">🖨️</button>
-            ${v.status!=='cancelada' && podePermissao('editar_venda') ? `<button class="btn btn-ghost btn-sm" style="color:var(--accent)" onclick="Vendas.editarNoPDV('${v.id}')">✏️</button>` : ''}
-            ${v.status!=='cancelada' ? `<button class="btn btn-ghost btn-sm" style="color:var(--green);font-size:10px" onclick="Vendas.emitirNFCe('${v.id}')" title="Emitir NFC-e">🧾 NFC-e</button>` : ''}
-            ${v.status!=='cancelada'?`<button class="btn btn-danger btn-sm" onclick="Vendas.cancelar('${v.id}')">Cancelar</button>`:''}
-          </td>
-        </tr>`).join('') || '<tr><td colspan="9"><div class="empty-state"><div class="icon">🧾</div><h3>Sem vendas nesta data</h3></div></td></tr>';
+      this._renderTabela();
     }
+  },
+
+  _renderTabela() {
+    const thead = document.getElementById('vendas-thead');
+    const tbody = document.getElementById('vendas-tbody');
+    if (!tbody) return;
+
+    const nuvem = this._todoTerminais;
+    const cols = 10;
+
+    if (thead) thead.innerHTML = `<tr>
+      <th style="width:32px"><input type="checkbox" title="Selecionar todas" onchange="Vendas.toggleTodasSel(this)"></th>
+      ${this._thSort('numero', '#')}
+      ${this._thSort('data', 'Data / Hora')}
+      <th>${nuvem ? 'Terminal' : 'Terminal'}</th>
+      ${this._thSort('cliente', 'Cliente')}
+      ${this._thSort('pagamento', 'Pagamento')}
+      ${this._thSort('total', 'Total')}
+      ${this._thSort('status', 'Status')}
+      <th>Nuvem</th>
+      <th></th>
+    </tr>`;
+
+    const lista = this._sortLista(this._lista);
+
+    if (!lista.length) {
+      tbody.innerHTML = `<tr><td colspan="${cols}"><div class="empty-state"><div class="icon">🧾</div><h3>Sem vendas nesta data</h3></div></td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = lista.map(v => {
+      const id = v.id || v.remote_id;
+      const sel = this._sel.has(id);
+      const cancelada = v.status === 'cancelada';
+      const dt = v.created_at || v.created_date;
+      const dataFmt = dt ? new Date(dt).toLocaleDateString('pt-BR', {day:'2-digit',month:'2-digit'}) : '—';
+      const horaFmt = dt ? new Date(dt).toLocaleTimeString('pt-BR', {hour:'2-digit',minute:'2-digit'}) : '—';
+      const pgBadge = v.forma_pagamento === 'pix' ? 'badge-green' : v.forma_pagamento === 'dinheiro' ? 'badge-yellow' : 'badge-blue';
+      const terminal = nuvem ? (v.terminal_id || '—') : 'Este terminal';
+
+      const syncBadge = nuvem
+        ? '<span class="badge badge-green" title="Sincronizado">☁ Sync</span>'
+        : v.remote_id
+          ? '<span class="badge badge-green" title="Sincronizado">☁ Sync</span>'
+          : v.sync_status === 'pending'
+            ? '<span class="badge badge-yellow" title="Aguardando">⏳ Pendente</span>'
+            : '<span class="badge badge-red" title="Erro">✕ Erro</span>';
+
+      return `<tr style="${sel ? 'background:var(--accent-soft,rgba(108,99,255,.08))' : ''}">
+        <td><input type="checkbox" ${sel ? 'checked' : ''} ${cancelada ? 'disabled' : ''} onchange="Vendas.toggleSel('${id}',this)"></td>
+        <td class="td-mono" style="font-size:13px;font-weight:600;color:var(--accent)">#${v.numero || '—'}</td>
+        <td>
+          <div style="font-size:13px;font-weight:500">${horaFmt}</div>
+          <div style="font-size:11px;color:var(--text3)">${dataFmt}</div>
+        </td>
+        <td style="font-size:11px;color:var(--text3)">${terminal}</td>
+        <td>
+          ${v.cliente_nome
+            ? `<div style="font-size:13px;font-weight:600;color:var(--text1)">${v.cliente_nome}</div>`
+            : `<span style="color:var(--text3);font-size:12px">—</span>`}
+        </td>
+        <td><span class="badge ${pgBadge}">${v.forma_pagamento || '—'}</span></td>
+        <td style="font-size:15px;font-weight:700;color:var(--accent);white-space:nowrap">R$ ${fmtMoney(v.total)}</td>
+        <td>${cancelada ? '<span class="badge badge-red">Cancelada</span>' : '<span class="badge badge-green">Concluída</span>'}</td>
+        <td>${syncBadge}</td>
+        <td style="display:flex;gap:4px;flex-wrap:wrap;min-width:120px">
+          ${nuvem
+            ? `<button class="btn btn-ghost btn-sm" onclick="Vendas.imprimirCloud(${JSON.stringify(v).replace(/"/g,'&quot;')})" title="Imprimir">🖨️</button>`
+            : `<button class="btn btn-ghost btn-sm" onclick="Vendas.imprimir('${id}')" title="Imprimir">🖨️</button>
+               ${!cancelada && podePermissao('editar_venda') ? `<button class="btn btn-ghost btn-sm" style="color:var(--accent)" onclick="Vendas.editarNoPDV('${id}')">✏️</button>` : ''}
+               ${!cancelada ? `<button class="btn btn-ghost btn-sm" style="color:var(--green);font-size:10px" onclick="Vendas.emitirNFCe('${id}')" title="Emitir NFC-e">🧾 NFC-e</button>` : ''}
+               ${!cancelada ? `<button class="btn btn-danger btn-sm" onclick="Vendas.cancelar('${id}')">Cancelar</button>` : ''}`}
+        </td>
+      </tr>`;
+    }).join('');
+  },
+
+  async nfceLote() {
+    if (!this._sel.size) return;
+    const ids = [...this._sel];
+    const ok = await window.pdv.app.confirm(`Emitir NFC-e para ${ids.length} venda(s) selecionada(s)?`);
+    if (!ok) return;
+
+    let sucesso = 0, erros = 0;
+    Toast.show(`Emitindo NFC-e para ${ids.length} venda(s)...`, 'info', 10000);
+
+    for (const id of ids) {
+      try {
+        const venda = await window.pdv.vendas.getById(id);
+        if (!venda || venda.status === 'cancelada') continue;
+        const res = await window.pdv.nfce.emitir(venda);
+        if (res.ok || res.aguardando) sucesso++;
+        else { erros++; console.warn('[NFCe lote] Erro venda', id, res.erro); }
+      } catch(e) {
+        erros++;
+        console.error('[NFCe lote] Exceção venda', id, e);
+      }
+    }
+
+    this._sel.clear();
+    this._atualizarBarraSel();
+    this._renderTabela();
+
+    if (erros === 0) Toast.show(`✅ ${sucesso} NFC-e(s) emitida(s) com sucesso`, 'success', 5000);
+    else Toast.show(`${sucesso} emitida(s) · ${erros} com erro — verifique o cadastro fiscal dos produtos`, 'warning', 7000);
   },
 
   async _enviarImpressao(dados) {

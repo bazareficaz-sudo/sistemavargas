@@ -1036,6 +1036,10 @@ const vendas = {
     if (filtros.data_fim) { where += ' AND v.created_at <= ?'; params.push(filtros.data_fim + 'T23:59:59'); }
     if (filtros.cliente_id) { where += ' AND v.cliente_id = ?'; params.push(filtros.cliente_id); }
     if (filtros.status) { where += ' AND v.status = ?'; params.push(filtros.status); }
+    if (filtros.produto) {
+      where += ' AND EXISTS (SELECT 1 FROM venda_itens vi WHERE vi.venda_id = v.id AND vi.produto_nome LIKE ?)';
+      params.push(`%${filtros.produto}%`);
+    }
 
     return db.prepare(`
       SELECT v.*, c.nome as cliente_nome
@@ -1043,7 +1047,7 @@ const vendas = {
       LEFT JOIN clientes c ON c.id = v.cliente_id
       WHERE ${where}
       ORDER BY v.created_at DESC
-      LIMIT ${filtros.limit || 100}
+      LIMIT ${filtros.limit || 200}
     `).all(...params);
   },
 
