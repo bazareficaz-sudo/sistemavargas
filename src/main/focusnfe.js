@@ -156,7 +156,6 @@ async function emitirNFCe(venda) {
   if (!cnpj) throw new Error('CNPJ da empresa fiscal não configurado');
 
   const { reference, payload } = montarPayload(venda);
-  console.log('[NFCe] itens payload:', JSON.stringify(payload.items?.map(i => ({ ncm: i.ncm, cfop: i.cfop, descricao: i.descricao?.slice(0,30) }))));
   const base = getBaseUrl();
   const url  = `${base}/v2/nfce?ref=${reference}`;
 
@@ -167,7 +166,6 @@ async function emitirNFCe(venda) {
   });
 
   const data = await res.json().catch(() => ({}));
-  console.log('[NFCe] HTTP', res.status, '| resposta:', JSON.stringify(data).slice(0, 500));
 
   if (res.status === 200 || res.status === 201 || data.status === 'autorizado') {
     return { ok: true, status: data.status, reference, data };
