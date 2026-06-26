@@ -1189,8 +1189,8 @@ const Launcher = {
       icon: '🛍️',
       titulo: 'Marketplace',
       desc: 'Integração com Mercado Livre, Shopee e outros canais',
-      tags: ['Mercado Livre', 'Shopee'],
-      status: 'breve',
+      tags: ['Shopee', 'Canais', 'Pedidos'],
+      status: 'ativo',
       cor: '#f59e0b',
     },
     {
@@ -1330,6 +1330,8 @@ const Launcher = {
       App.navigate('pdv');
     } else if (modulo === 'gestao') {
       App.navigate('vendas');
+    } else if (modulo === 'marketplace') {
+      App.navigate('marketplace');
     }
   },
 };
