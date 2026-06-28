@@ -157,21 +157,25 @@ const PDV = (() => {
 .pdv-search-results{
   position:absolute;left:16px;right:16px;top:calc(100% + 4px);
   background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-lg);
-  z-index:50;max-height:380px;overflow-y:auto;box-shadow:var(--shadow-lg)
+  z-index:50;max-height:420px;overflow-y:auto;box-shadow:var(--shadow-lg)
 }
-.search-item{
-  display:flex;align-items:center;gap:12px;padding:10px 14px;cursor:pointer;
-  border-bottom:1px solid var(--border);transition:background .1s
+.search-grid{width:100%;border-collapse:collapse}
+.search-grid thead th{
+  padding:7px 10px;font-size:10px;font-weight:600;text-transform:uppercase;
+  letter-spacing:.04em;color:var(--text3);border-bottom:1px solid var(--border2);
+  background:var(--bg3);position:sticky;top:0;white-space:nowrap
 }
+.search-item{cursor:pointer;border-bottom:1px solid var(--border);transition:background .1s}
 .search-item:last-child{border-bottom:none}
 .search-item:hover,.search-item.highlighted{background:var(--bg3)}
-.search-item-emoji{font-size:22px;width:32px;text-align:center}
-.search-item-info{flex:1;min-width:0}
-.search-item-name{font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.search-item-sku{font-size:11px;color:var(--text3)}
-.search-item-price{font-family:'Syne',sans-serif;font-weight:700;color:var(--accent);white-space:nowrap}
-.search-item-stock{font-size:11px;color:var(--text2)}
-.search-item.out-of-stock{opacity:.45;cursor:not-allowed}
+.search-item td{padding:8px 10px;font-size:13px;vertical-align:middle}
+.search-item.out-of-stock{opacity:.5;cursor:not-allowed}
+.si-cod{font-size:10px;color:var(--text3);white-space:nowrap}
+.si-nome{font-weight:600;line-height:1.3}
+.si-sub{font-size:10px;color:var(--text3)}
+.si-marca{font-size:12px;color:var(--text2)}
+.si-estoque{text-align:center;font-size:12px;white-space:nowrap}
+.si-preco{text-align:right;font-weight:700;color:var(--accent);font-family:'Syne',sans-serif;white-space:nowrap}
 
 .pdv-client-bar{
   display:flex;align-items:center;justify-content:space-between;
@@ -259,25 +263,34 @@ const PDV = (() => {
         </div>`;
       } else {
         const permiteEstoqueNeg = await window.pdv.config.get('config.vender_estoque_negativo') === true;
-        box.innerHTML = searchResults.map((p, i) => {
+        const rows = searchResults.map((p, i) => {
           const semEstoque = p.estoque <= 0 && !permiteEstoqueNeg;
-          return `
-          <div class="search-item ${semEstoque ? 'out-of-stock' : ''}" id="si-${i}"
-            onclick="${!semEstoque ? `PDV.selecionarProduto(${JSON.stringify(p).replace(/"/g, '&quot;')})` : ''}">
-            <div class="search-item-emoji">${p.emoji || '📦'}</div>
-            <div class="search-item-info">
-              <div class="search-item-name">${p.nome}</div>
-              <div class="search-item-sku">${p.sku || ''} ${p.ean ? '· ' + p.ean : ''}</div>
-            </div>
-            <div style="text-align:right">
-              <div class="search-item-price">R$ ${fmtMoney(p.preco_venda)}</div>
-              <div class="search-item-stock">${p.estoque <= 0 ? (semEstoque ? '❌ Sem estoque' : `⚠️ ${p.estoque}`) : `📦 ${p.estoque}`}</div>
-              ${semEstoque ? `<button class="btn btn-ghost" style="font-size:9px;padding:1px 6px;margin-top:2px"
+          const estoqueHtml = p.estoque <= 0
+            ? (semEstoque ? '<span style="color:var(--red)">❌ 0</span>' : `<span style="color:var(--yellow)">⚠️ ${p.estoque}</span>`)
+            : `<span style="color:var(--green)">${p.estoque}</span>`;
+          const faltaBtn = semEstoque
+            ? `<button class="btn btn-ghost" style="font-size:9px;padding:1px 5px;margin-left:4px"
                 onclick="event.stopPropagation();Faltas.abrirNovaFalta(${JSON.stringify({nome:p.nome,sku:p.sku||'',id:p.id}).replace(/"/g,'&quot;')});document.getElementById('pdv-results').style.display='none'">
-                📋 Falta</button>` : ''}
-            </div>
-          </div>`;
+                📋</button>` : '';
+          return `<tr class="search-item ${semEstoque ? 'out-of-stock' : ''}" id="si-${i}"
+            onclick="${!semEstoque ? `PDV.selecionarProduto(${JSON.stringify(p).replace(/"/g, '&quot;')})` : ''}">
+            <td class="si-cod">${p.sku || '—'}</td>
+            <td><div class="si-nome">${p.emoji ? p.emoji + ' ' : ''}${p.nome}</div><div class="si-sub">${p.ean ? 'EAN: ' + p.ean : ''}</div></td>
+            <td class="si-marca">${p.marca || '—'}</td>
+            <td class="si-estoque">${estoqueHtml}${faltaBtn}</td>
+            <td class="si-preco">R$ ${fmtMoney(p.preco_venda)}</td>
+          </tr>`;
         }).join('');
+        box.innerHTML = `<table class="search-grid">
+          <thead><tr>
+            <th style="width:80px">SKU</th>
+            <th>Produto</th>
+            <th style="width:110px">Marca</th>
+            <th style="width:80px;text-align:center">Estoque</th>
+            <th style="width:100px;text-align:right">Preço</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>`;
       }
       searchHighlight = -1;
       box.style.display = 'block';

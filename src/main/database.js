@@ -335,6 +335,64 @@ function runMigrations() {
       data_saida TEXT, data_entrega TEXT, criado_por TEXT,
       created_at TEXT NOT NULL, synced_at TEXT, sync_status TEXT DEFAULT 'pending'
     )`,
+    `CREATE TABLE IF NOT EXISTS marketplace_anuncios (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      conta_id TEXT NOT NULL,
+      canal TEXT NOT NULL DEFAULT 'shopee',
+      item_id TEXT NOT NULL,
+      nome TEXT,
+      status TEXT DEFAULT 'NORMAL',
+      preco REAL,
+      estoque INTEGER,
+      vendas INTEGER DEFAULT 0,
+      rating REAL,
+      imagem_url TEXT,
+      dados_json TEXT,
+      sincronizado_em TEXT,
+      criado_em TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(conta_id, item_id)
+    )`,
+    'CREATE INDEX IF NOT EXISTS idx_mkt_anuncios_conta ON marketplace_anuncios(conta_id)',
+    'CREATE INDEX IF NOT EXISTS idx_mkt_anuncios_nome ON marketplace_anuncios(nome)',
+    // Colunas de mapeamento (migrations seguras)
+    'ALTER TABLE marketplace_anuncios ADD COLUMN produto_id TEXT',
+    'ALTER TABLE marketplace_anuncios ADD COLUMN produto_nome TEXT',
+    'ALTER TABLE marketplace_anuncios ADD COLUMN produto_sku TEXT',
+    'ALTER TABLE marketplace_anuncios ADD COLUMN status_mapeamento TEXT DEFAULT \'pendente_mapeamento\'',
+    'ALTER TABLE marketplace_anuncios ADD COLUMN base44_id TEXT',
+    'ALTER TABLE marketplace_anuncios ADD COLUMN mapeado_em TEXT',
+    `CREATE TABLE IF NOT EXISTS marketplace_pedidos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      conta_id TEXT NOT NULL,
+      canal TEXT NOT NULL DEFAULT 'shopee',
+      pedido_id TEXT NOT NULL,
+      status_shopee TEXT,
+      status_pagamento TEXT,
+      cliente_nome TEXT,
+      cliente_telefone TEXT,
+      endereco_entrega TEXT,
+      cliente_cidade TEXT,
+      cliente_estado TEXT,
+      valor_total REAL,
+      valor_produtos REAL,
+      valor_frete REAL,
+      valor_desconto REAL,
+      transportadora TEXT,
+      metodo_envio TEXT,
+      codigo_rastreio TEXT,
+      shipping_id TEXT,
+      data_pedido TEXT,
+      data_prazo_envio TEXT,
+      itens_json TEXT,
+      dados_json TEXT,
+      base44_id TEXT,
+      base44_status TEXT DEFAULT 'pendente',
+      importado_em TEXT NOT NULL DEFAULT (datetime('now')),
+      atualizado_em TEXT,
+      UNIQUE(conta_id, pedido_id)
+    )`,
+    'CREATE INDEX IF NOT EXISTS idx_mkt_pedidos_conta ON marketplace_pedidos(conta_id)',
+    'CREATE INDEX IF NOT EXISTS idx_mkt_pedidos_base44 ON marketplace_pedidos(base44_status)',
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch { /* coluna já existe */ }
@@ -1312,6 +1370,160 @@ const syncQueue = {
   }
 };
 
+// ─── Marketplace Pedidos ───────────────────────────────────────────
+const mktPedidos = {
+  salvar(contaId, canal, pedido) {
+    const stmt = db.prepare(`
+      INSERT INTO marketplace_pedidos (
+        conta_id, canal, pedido_id, status_shopee, status_pagamento,
+        cliente_nome, cliente_telefone, endereco_entrega, cliente_cidade, cliente_estado,
+        valor_total, valor_produtos, valor_frete, valor_desconto,
+        transportadora, metodo_envio, codigo_rastreio, shipping_id,
+        data_pedido, data_prazo_envio, itens_json, dados_json, atualizado_em
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))
+      ON CONFLICT(conta_id, pedido_id) DO UPDATE SET
+        status_shopee=excluded.status_shopee, status_pagamento=excluded.status_pagamento,
+        cliente_nome=excluded.cliente_nome, valor_total=excluded.valor_total,
+        codigo_rastreio=excluded.codigo_rastreio, itens_json=excluded.itens_json,
+        dados_json=excluded.dados_json, atualizado_em=excluded.atualizado_em
+    `);
+    stmt.run(
+      contaId, canal, String(pedido.pedido_id),
+      pedido.status_shopee || null, pedido.status_pagamento || null,
+      pedido.cliente_nome || null, pedido.cliente_telefone || null,
+      pedido.endereco_entrega || null, pedido.cliente_cidade || null, pedido.cliente_estado || null,
+      pedido.valor_total || 0, pedido.valor_produtos || 0, pedido.valor_frete || 0, pedido.valor_desconto || 0,
+      pedido.transportadora || null, pedido.metodo_envio || null,
+      pedido.codigo_rastreio || null, pedido.shipping_id || null,
+      pedido.data_pedido || null, pedido.data_prazo_envio || null,
+      JSON.stringify(pedido.itens || []), JSON.stringify(pedido.dados_raw || {})
+    );
+  },
+
+  salvarLote(contaId, canal, pedidos) {
+    const tx = db.transaction(list => list.forEach(p => this.salvar(contaId, canal, p)));
+    tx(pedidos);
+    return pedidos.length;
+  },
+
+  listar(contaId, filtros = {}, pagina = 0, porPagina = 50) {
+    const conds = ['conta_id = ?'];
+    const params = [contaId];
+    if (filtros.status)  { conds.push('status_shopee = ?'); params.push(filtros.status); }
+    if (filtros.busca)   { conds.push('(cliente_nome LIKE ? OR pedido_id LIKE ?)'); params.push(`%${filtros.busca}%`, `%${filtros.busca}%`); }
+    if (filtros.base44)  { conds.push('base44_status = ?'); params.push(filtros.base44); }
+    const where = `WHERE ${conds.join(' AND ')}`;
+    const total = db.prepare(`SELECT COUNT(*) as n FROM marketplace_pedidos ${where}`).get(...params).n;
+    const rows  = db.prepare(`SELECT * FROM marketplace_pedidos ${where} ORDER BY data_pedido DESC LIMIT ? OFFSET ?`).all(...params, porPagina, pagina * porPagina);
+    return { rows, total, pagina, porPagina, totalPaginas: Math.ceil(total / porPagina) };
+  },
+
+  getPendentesBase44(contaId) {
+    return db.prepare(`SELECT * FROM marketplace_pedidos WHERE conta_id = ? AND base44_status != 'enviado' ORDER BY data_pedido ASC`).all(contaId);
+  },
+
+  marcarEnviadoBase44(id, base44Id) {
+    db.prepare(`UPDATE marketplace_pedidos SET base44_id = ?, base44_status = 'enviado', atualizado_em = datetime('now') WHERE id = ?`).run(base44Id, id);
+  },
+
+  marcarErroBase44(id, erro) {
+    db.prepare(`UPDATE marketplace_pedidos SET base44_status = 'erro', atualizado_em = datetime('now') WHERE id = ?`).run(id);
+  },
+
+  getUltimaData(contaId) {
+    const r = db.prepare(`SELECT MAX(data_pedido) as ultima FROM marketplace_pedidos WHERE conta_id = ?`).get(contaId);
+    return r?.ultima || null;
+  },
+
+  getById(contaId, pedidoId) {
+    return db.prepare('SELECT * FROM marketplace_pedidos WHERE conta_id = ? AND pedido_id = ?').get(contaId, String(pedidoId));
+  },
+
+  atualizarItens(contaId, pedidoId, itensJson, base44Status = 'pendente') {
+    db.prepare(`UPDATE marketplace_pedidos SET itens_json = ?, base44_status = ?, atualizado_em = datetime('now') WHERE conta_id = ? AND pedido_id = ?`)
+      .run(itensJson, base44Status, contaId, String(pedidoId));
+  },
+};
+
+// ─── Marketplace Anúncios ──────────────────────────────────────────
+const mktAnuncios = {
+  salvarLote(contaId, canal, items) {
+    const stmt = db.prepare(`
+      INSERT INTO marketplace_anuncios (conta_id, canal, item_id, nome, status, preco, estoque, vendas, rating, imagem_url, dados_json, sincronizado_em)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      ON CONFLICT(conta_id, item_id) DO UPDATE SET
+        nome=excluded.nome, status=excluded.status, preco=excluded.preco,
+        estoque=excluded.estoque, vendas=excluded.vendas, rating=excluded.rating,
+        imagem_url=excluded.imagem_url, dados_json=excluded.dados_json, sincronizado_em=excluded.sincronizado_em
+    `);
+    const upsertMany = db.transaction(list => list.forEach(i => stmt.run(
+      contaId, canal, String(i.item_id),
+      i.item_name || i.nome || null,
+      i.item_status || i.status || null,
+      i.price_info?.[0]?.current_price ?? i.price_info?.[0]?.original_price ?? i.preco ?? null,
+      i.stock_info_v2?.summary_info?.total_available_stock ?? i.estoque ?? null,
+      i.sales ?? i.vendas ?? 0,
+      i.item_rating?.rating_star ?? i.rating ?? null,
+      i.image?.image_url_list?.[0] ?? i.imagem_url ?? null,
+      JSON.stringify(i)
+    )));
+    upsertMany(items);
+    return items.length;
+  },
+
+  listar(contaId, busca = '', status = '', pagina = 0, porPagina = 50) {
+    const conds = ['conta_id = ?'];
+    const params = [contaId];
+    if (status) { conds.push('status = ?'); params.push(status); }
+    if (busca)  { conds.push('nome LIKE ?'); params.push(`%${busca}%`); }
+    const where = `WHERE ${conds.join(' AND ')}`;
+    const total = db.prepare(`SELECT COUNT(*) as n FROM marketplace_anuncios ${where}`).get(...params).n;
+    const rows  = db.prepare(`SELECT * FROM marketplace_anuncios ${where} ORDER BY nome LIMIT ? OFFSET ?`).all(...params, porPagina, pagina * porPagina);
+    return { rows, total, pagina, porPagina, totalPaginas: Math.ceil(total / porPagina) };
+  },
+
+  getByItemId(contaId, itemId) {
+    return db.prepare('SELECT * FROM marketplace_anuncios WHERE conta_id = ? AND item_id = ?').get(contaId, String(itemId));
+  },
+
+  salvarUm(contaId, canal, item) {
+    return this.salvarLote(contaId, canal, [item]);
+  },
+
+  total(contaId) {
+    return db.prepare('SELECT COUNT(*) as total, MAX(sincronizado_em) as ultima_sync FROM marketplace_anuncios WHERE conta_id = ?').get(contaId);
+  },
+
+  itemIdsExistentes(contaId) {
+    return db.prepare('SELECT item_id FROM marketplace_anuncios WHERE conta_id = ?').all(contaId).map(r => r.item_id);
+  },
+
+  salvarBase44Id(contaId, itemId, base44Id) {
+    db.prepare('UPDATE marketplace_anuncios SET base44_id = ? WHERE conta_id = ? AND item_id = ?').run(base44Id, contaId, String(itemId));
+  },
+
+  mapear(contaId, itemId, produtoId, produtoNome, produtoSku) {
+    db.prepare(`UPDATE marketplace_anuncios SET
+      produto_id = ?, produto_nome = ?, produto_sku = ?,
+      status_mapeamento = 'mapeado', mapeado_em = datetime('now')
+      WHERE conta_id = ? AND item_id = ?`
+    ).run(produtoId, produtoNome, produtoSku || null, contaId, String(itemId));
+  },
+
+  getMapeamento(contaId, itemId) {
+    return db.prepare('SELECT produto_id, produto_nome, produto_sku, status_mapeamento FROM marketplace_anuncios WHERE conta_id = ? AND item_id = ?').get(contaId, String(itemId));
+  },
+
+  getMapeamentoPorItemIds(contaId, itemIds) {
+    if (!itemIds.length) return {};
+    const placeholders = itemIds.map(() => '?').join(',');
+    const rows = db.prepare(`SELECT item_id, produto_id, produto_nome, produto_sku, status_mapeamento FROM marketplace_anuncios WHERE conta_id = ? AND item_id IN (${placeholders})`).all(contaId, ...itemIds.map(String));
+    const map = {};
+    rows.forEach(r => { map[r.item_id] = r; });
+    return map;
+  },
+};
+
 module.exports = {
   initialize,
   db: () => db,
@@ -1324,5 +1536,7 @@ module.exports = {
   estoque,
   faltas,
   entregas,
-  sync: syncQueue
+  sync: syncQueue,
+  mktAnuncios,
+  mktPedidos,
 };

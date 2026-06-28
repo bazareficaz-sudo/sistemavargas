@@ -582,6 +582,198 @@ async function atualizarProduto(remoteId, dados) {
   return await put(`/entities/Produto/${remoteId}`, payload);
 }
 
+// ─── Separação (Pedidos Marketplace) ─────────────────────────────────
+
+function _separacaoPayload(pedido, contaInfo) {
+  const db = require('./database');
+  const itensRaw = JSON.parse(pedido.itens_json || '[]');
+
+  // Busca mapeamentos de todos os itens de uma vez
+  const itemIds = itensRaw.map(i => i.marketplace_anuncio_id).filter(Boolean);
+  const mapMap  = db.mktAnuncios.getMapeamentoPorItemIds(pedido.conta_id || contaInfo.id, itemIds);
+  const idGenerico = contaInfo.produto_generico_id || null;
+
+  let temNaoMapeado = false;
+  const itens = itensRaw.map(i => {
+    const map = mapMap[i.marketplace_anuncio_id];
+    const mapeado = map?.status_mapeamento === 'mapeado' && map?.produto_id;
+    if (!mapeado) temNaoMapeado = true;
+    return {
+      ...i,
+      produto_id:                 mapeado ? map.produto_id  : (idGenerico || null),
+      produto_nome:               mapeado ? map.produto_nome : (i.produto_nome || 'Produto sem mapeamento'),
+      produto_sku:                mapeado ? (map.produto_sku || '') : (i.sku_marketplace || 'GENERICO'),
+      nao_mapeado:                !mapeado,
+      produto_original_descricao: i.produto_nome || i.produto_original_descricao || '',
+    };
+  });
+
+  const statusBase = temNaoMapeado ? 'bloqueado_mapeamento' : _statusBase44(pedido.status_shopee);
+
+  return {
+    empresa_id:              contaInfo.empresa_id   || null,
+    empresa_nome:            contaInfo.empresa_nome  || null,
+    pedido_id:               pedido.pedido_id,
+    data_pedido_marketplace: pedido.data_pedido     || null,
+    cliente_nome:            pedido.cliente_nome    || 'Cliente Shopee',
+    cliente_telefone:        pedido.cliente_telefone || null,
+    endereco_entrega:        pedido.endereco_entrega || null,
+    cliente_cidade:          pedido.cliente_cidade  || null,
+    cliente_estado:          pedido.cliente_estado  || null,
+    origem_canal:            'marketplace',
+    marketplace_config_id:   contaInfo.marketplace_config_id || contaInfo.id,
+    marketplace_plataforma:  pedido.canal || 'shopee',
+    marketplace_conta_nome:  contaInfo.nome         || null,
+    status:                  statusBase,
+    tem_bloqueio:            temNaoMapeado,
+    motivo_bloqueio:         temNaoMapeado ? 'Anúncio(s) sem mapeamento de produto. Mapear em Gestão de Anúncios.' : null,
+    estoque_baixado:         false,
+    status_ml:               pedido.status_shopee   || null,
+    status_pagamento:        pedido.status_pagamento || null,
+    valor_total:             pedido.valor_total      || 0,
+    valor_produtos:          pedido.valor_produtos   || 0,
+    valor_frete_cliente:     pedido.valor_frete      || 0,
+    valor_desconto:          pedido.valor_desconto   || 0,
+    transportadora:          pedido.transportadora   || null,
+    metodo_envio:            pedido.metodo_envio     || null,
+    codigo_rastreio:         pedido.codigo_rastreio  || null,
+    shipping_id:             pedido.shipping_id      || null,
+    data_prazo_envio:        pedido.data_prazo_envio || null,
+    itens:                   itens,
+    ultima_sincronizacao:    new Date().toISOString(),
+  };
+}
+
+function _statusBase44(statusShopee) {
+  return { UNPAID:'emitir', READY_TO_SHIP:'emitir', PROCESSED:'em_separacao', SHIPPED:'enviado', COMPLETED:'finalizado', CANCELLED:'cancelado', IN_CANCEL:'cancelado' }[statusShopee] || 'emitir';
+}
+
+async function criarSeparacao(pedido, contaInfo) {
+  return post('/entities/Separacao', _separacaoPayload(pedido, contaInfo));
+}
+
+async function atualizarSeparacao(base44Id, pedido, contaInfo) {
+  return put(`/entities/Separacao/${base44Id}`, _separacaoPayload(pedido, contaInfo));
+}
+
+// Busca separação existente pelo pedido_id
+async function buscarSeparacaoPorPedidoId(pedidoId) {
+  try {
+    const res = await get('/entities/Separacao', { pedido_id: pedidoId, limit: 1 });
+    const list = Array.isArray(res) ? res : (res.results || []);
+    return list[0] || null;
+  } catch { return null; }
+}
+
+// Atualiza mapeamento de produto no Anuncio do Base44
+async function mapearAnuncioBase44(base44AnuncioId, produtoId, produtoNome, produtoSku, mapeadoPor) {
+  if (!base44AnuncioId) return null;
+  return put(`/entities/Anuncio/${base44AnuncioId}`, {
+    produto_id: produtoId,
+    produto_nome: produtoNome,
+    produto_sku: produtoSku || null,
+    status_mapeamento: 'mapeado',
+    mapeado_por: mapeadoPor || 'PDV',
+    mapeado_em: new Date().toISOString(),
+  });
+}
+
+// Busca ou cria o produto genérico para pedidos sem mapeamento
+async function getIdProdutoGenerico(empresaId) {
+  try {
+    const res = await get('/entities/Produto', { empresa_id: empresaId, tipo: 'generico', limit: 1 });
+    const list = Array.isArray(res) ? res : (res.results || []);
+    if (list[0]) return list[0]._id || list[0].id;
+  } catch {}
+  return null;
+}
+
+async function enviarPedidoBase44(pedidoLocal, contaInfo) {
+  // Verifica se já existe no Base44
+  const existente = pedidoLocal.base44_id
+    ? { _id: pedidoLocal.base44_id }
+    : await buscarSeparacaoPorPedidoId(pedidoLocal.pedido_id);
+
+  if (existente?._id) {
+    return atualizarSeparacao(existente._id, pedidoLocal, contaInfo);
+  }
+  return criarSeparacao(pedidoLocal, contaInfo);
+}
+
+// ─── Anúncios Marketplace ─────────────────────────────────────────────
+
+// Converte registro do SQLite local para payload Base44
+function _anuncioPayload(local, contaInfo) {
+  const statusMap = { NORMAL: 'ativo', UNLIST: 'pausado', BANNED: 'deletado', DELETED: 'deletado' };
+  return {
+    empresa_id:               contaInfo.empresa_id   || null,
+    empresa_nome:             contaInfo.empresa_nome  || null,
+    marketplace_config_id:    contaInfo.marketplace_config_id || contaInfo.id,
+    marketplace_plataforma:   local.canal || 'shopee',
+    marketplace_seller_id:    contaInfo.shop_id      || null,
+    marketplace_anuncio_id:   local.item_id,
+    titulo:                   local.nome             || '(sem título)',
+    preco_marketplace:        local.preco            || null,
+    preco_local:              local.preco            || null,
+    estoque_marketplace:      local.estoque          || 0,
+    estoque_sistema:          local.estoque          || 0,
+    thumbnail_url:            local.imagem_url       || null,
+    status:                   statusMap[local.status] || 'ativo',
+    status_marketplace:       local.status           || 'NORMAL',
+    status_mapeamento:        'pendente_mapeamento',
+    status_sincronizacao:     'sincronizado',
+    vendas_quantidade:        local.vendas           || 0,
+    data_importacao:          local.criado_em        || new Date().toISOString(),
+    ultima_sincronizacao:     local.sincronizado_em  || new Date().toISOString(),
+  };
+}
+
+// Busca anúncios já existentes no Base44 para esta conta (evita duplicatas)
+async function listarAnunciosRemoto(marketplaceConfigId) {
+  const items = [];
+  let skip = 0;
+  while (true) {
+    const res = await get('/entities/Anuncio', {
+      marketplace_config_id: marketplaceConfigId,
+      limit: 200, skip,
+    });
+    const batch = Array.isArray(res) ? res : (res.results || []);
+    items.push(...batch);
+    if (batch.length < 200) break;
+    skip += 200;
+  }
+  return items;
+}
+
+async function upsertAnuncio(local, contaInfo, remoteId) {
+  const payload = _anuncioPayload(local, contaInfo);
+  if (remoteId) return put(`/entities/Anuncio/${remoteId}`, payload);
+  return post('/entities/Anuncio', payload);
+}
+
+// Envia todos os anúncios locais para Base44, sem duplicar
+async function sincronizarAnunciosBase44(contaInfo, anunciosLocais, onProgress) {
+  const db = require('./database');
+  const remotos = await listarAnunciosRemoto(contaInfo.marketplace_config_id || contaInfo.id);
+  const remotoMap = {};
+  for (const r of remotos) remotoMap[r.marketplace_anuncio_id] = r._id || r.id;
+
+  let n = 0, erros = 0;
+  for (const local of anunciosLocais) {
+    try {
+      const res = await upsertAnuncio(local, contaInfo, remotoMap[local.item_id]);
+      const b44id = res?._id || res?.id;
+      if (b44id) db.mktAnuncios.salvarBase44Id(contaInfo.id || local.conta_id, local.item_id, b44id);
+      n++;
+    } catch(e) {
+      console.warn('[Anuncio] Erro ao enviar', local.item_id, e.message);
+      erros++;
+    }
+    if (onProgress) onProgress(n, anunciosLocais.length, erros);
+  }
+  return { enviados: n, erros, total: anunciosLocais.length };
+}
+
 module.exports = {
   registrarFalta,
   atualizarFalta,
@@ -612,4 +804,12 @@ module.exports = {
   listarEntregasRemoto,
   atualizarEntrega,
   atualizarProduto,
+  listarAnunciosRemoto,
+  upsertAnuncio,
+  sincronizarAnunciosBase44,
+  enviarPedidoBase44,
+  criarSeparacao,
+  atualizarSeparacao,
+  mapearAnuncioBase44,
+  getIdProdutoGenerico,
 };

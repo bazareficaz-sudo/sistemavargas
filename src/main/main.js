@@ -37,6 +37,7 @@ function createWindow() {
   mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
 
   mainWindow.once('ready-to-show', () => {
+    _iniciarPollingPedidos();
     sync.startAutoSync(mainWindow);
     // Auto-iniciar servidor de impressão se configurado como CAIXA
     if (store.get('config.print_server_ativo') === true) {
@@ -72,10 +73,42 @@ function createTray() {
 }
 
 // ─── App lifecycle ───────────────────────────────────────────────
+// ─── Deep Link: protocolo vargas:// ──────────────────────────────
+const GOT_LOCK = app.requestSingleInstanceLock();
+if (!GOT_LOCK) { app.quit(); }
+
+// Em modo dev (electron . ) precisa passar o script como argumento extra
+if (process.defaultApp && process.argv.length >= 2) {
+  app.setAsDefaultProtocolClient('vargas', process.execPath, [path.resolve(process.argv[1])]);
+} else {
+  app.setAsDefaultProtocolClient('vargas');
+}
+
+function handleDeepLink(url) {
+  if (!url || !url.startsWith('vargas://shopee-auth')) return;
+  try {
+    const u      = new URL(url);
+    const code   = u.searchParams.get('code');
+    const shopId = u.searchParams.get('shop_id');
+    if (code && shopId) shopee.receberCallback(code, shopId);
+  } catch (e) { console.error('[DeepLink] Erro:', e.message); }
+}
+
+app.on('second-instance', (_, argv) => {
+  const deepUrl = argv.find(a => a.startsWith('vargas://'));
+  if (deepUrl) handleDeepLink(deepUrl);
+  if (mainWindow) { if (mainWindow.isMinimized()) mainWindow.restore(); mainWindow.focus(); }
+});
+
+app.on('open-url', (_, url) => handleDeepLink(url)); // macOS
+
 app.whenReady().then(() => {
   db.initialize();
   createWindow();
   createTray();
+  // Captura deep link se o app foi aberto pelo protocolo vargas://
+  const deepUrl = process.argv.find(a => a.startsWith('vargas://'));
+  if (deepUrl) setTimeout(() => handleDeepLink(deepUrl), 2000);
   app.on('activate', () => { if (!mainWindow) createWindow(); });
 });
 
@@ -201,21 +234,214 @@ ipcMain.handle('ia:descricao', async (_, nome, categoria, marca, unidade) => ia.
 ipcMain.handle('ia:lote', async (_, produtos) => ia.enriquecerLote(produtos));
 ipcMain.handle('ia:status', () => ({ configurado: !!ia.getApiKey() }));
 
-// ─── Shopee ────────────────────────────────────────────────────────
-ipcMain.handle('shopee:status',  () => shopee.getStatus());
-ipcMain.handle('shopee:salvarCredenciais', (_, id, key, sandbox) => shopee.salvarCredenciais(id, key, sandbox));
-ipcMain.handle('shopee:conectar', async () => {
-  try {
-    const result = await shopee.iniciarAuth(mainWindow);
-    return { ok: true, ...result };
-  } catch (e) {
-    return { ok: false, erro: e.message };
-  }
+// ─── Marketplace (multi-conta) ─────────────────────────────────────
+ipcMain.handle('mkt:listarContas',   (_, canal)     => shopee.listarContas(canal));
+ipcMain.handle('mkt:getConta',       (_, id)        => shopee.getConta(id));
+ipcMain.handle('mkt:salvarConta',    (_, dados)     => { if (!dados.id) dados.id = require('crypto').randomUUID(); return shopee.salvarConta(dados); });
+ipcMain.handle('mkt:removerConta',   (_, id)        => { shopee.removerConta(id); return { ok: true }; });
+ipcMain.handle('mkt:conectar',       async (_, id)  => {
+  try   { return { ok: true,  ...(await shopee.iniciarAuth(id)) }; }
+  catch (e) { return { ok: false, erro: e.message }; }
 });
-ipcMain.handle('shopee:desconectar', async () => { await shopee.desconectar(); return { ok: true }; });
-ipcMain.handle('shopee:shopInfo',    async () => { try { return await shopee.getShopInfo(); } catch(e) { return null; } });
-ipcMain.handle('shopee:anuncios',    async (_, page) => { try { return await shopee.getAnuncios(page); } catch(e) { return { erro: e.message }; } });
-ipcMain.handle('shopee:pedidos',     async (_, status) => { try { return await shopee.getPedidos(status); } catch(e) { return { erro: e.message }; } });
+ipcMain.handle('mkt:desconectar',    async (_, id)  => { await shopee.desconectar(id); return { ok: true }; });
+ipcMain.handle('mkt:shopInfo',       async (_, id)  => { try { return await shopee.getShopInfo(id); }   catch(e) { return { erro: e.message }; } });
+ipcMain.handle('mkt:anuncios',       async (_, id, page)   => { try { return await shopee.getAnuncios(id, page); } catch(e) { return { erro: e.message }; } });
+ipcMain.handle('mkt:pedidos',        async (_, id, status) => { try { return await shopee.getPedidos(id, status); } catch(e) { return { erro: e.message }; } });
+ipcMain.handle('mkt:trocarCodigo',      async (_, id, code, shopId) => shopee.trocarCodigo(id, code, shopId));
+ipcMain.handle('mkt:anuncios:listar',   (_, contaId, busca, status, pagina) => db.mktAnuncios.listar(contaId, busca, status, pagina));
+ipcMain.handle('mkt:anuncios:total',    (_, contaId)               => db.mktAnuncios.total(contaId));
+ipcMain.handle('mkt:anuncios:importar', async (_, contaId) => {
+  try {
+    const resultado = await shopee.importarTodosAnuncios(contaId, (n, t) => {
+      mainWindow?.webContents.send('mkt:anuncios:progresso', { n, t });
+    });
+    return { ok: true, ...resultado };
+  } catch(e) { return { ok: false, erro: e.message }; }
+});
+ipcMain.handle('mkt:anuncios:sincronizarUm', async (_, contaId, itemId) => {
+  try {
+    const item = await shopee.getItemDetalhe(contaId, itemId);
+    if (item) db.mktAnuncios.salvarUm(contaId, 'shopee', item);
+    return { ok: true, item };
+  } catch(e) { return { ok: false, erro: e.message }; }
+});
+ipcMain.handle('mkt:anuncios:verificarNovos', async (_, contaId) => {
+  try { return { ok: true, ...(await shopee.verificarNovosAnuncios(contaId)) }; }
+  catch(e) { return { ok: false, erro: e.message }; }
+});
+
+ipcMain.handle('mkt:anuncios:mapear', async (_, contaId, itemId, produto) => {
+  try {
+    // Salva mapeamento local
+    db.mktAnuncios.mapear(contaId, itemId, produto.id, produto.nome, produto.sku);
+
+    // Busca base44_id do anúncio e atualiza no Base44
+    const anuncio = db.mktAnuncios.getByItemId(contaId, itemId);
+    const store = require('electron-store');
+    const s = new store();
+    const usuario = s.get('auth.usuario') || {};
+    if (anuncio?.base44_id) {
+      await api.mapearAnuncioBase44(anuncio.base44_id, produto.id, produto.nome, produto.sku, usuario.nome || 'PDV');
+    } else {
+      // Tenta buscar o Anuncio no Base44 pelo item_id e atualiza
+      try {
+        const remotos = await api.listarAnunciosRemoto(contaId);
+        const remoto = remotos.find(r => r.marketplace_anuncio_id === String(itemId));
+        if (remoto?._id) {
+          db.mktAnuncios.salvarBase44Id(contaId, itemId, remoto._id);
+          await api.mapearAnuncioBase44(remoto._id, produto.id, produto.nome, produto.sku, usuario.nome || 'PDV');
+        }
+      } catch {}
+    }
+    return { ok: true };
+  } catch(e) { return { ok: false, erro: e.message }; }
+});
+
+ipcMain.handle('mkt:anuncios:enviarBase44', async (_, contaId) => {
+  try {
+    const conta = shopee.getConta(contaId);
+    if (!conta) return { ok: false, erro: 'Conta não encontrada' };
+
+    // listar sem filtro retorna todos (sem paginação quando não tem status/busca)
+    const { rows: anuncios } = db.mktAnuncios.listar(contaId, '', '', 0, 99999);
+    if (!anuncios.length) return { ok: false, erro: 'Nenhum anúncio no banco. Importe primeiro.' };
+
+    // Usa empresa_id e marketplace_config_id da conta ou do usuário logado
+    const store = require('electron-store');
+    const s = new store();
+    const usuario = s.get('auth.usuario') || {};
+    const contaInfo = {
+      ...conta,
+      empresa_id: conta.empresa_id || usuario.empresa_id || null,
+      empresa_nome: conta.empresa_nome || usuario.empresa_nome || null,
+      marketplace_config_id: conta.marketplace_config_id || contaId,
+    };
+
+    const res = await api.sincronizarAnunciosBase44(contaInfo, anuncios, (n, t) => {
+      if (mainWindow) mainWindow.webContents.send('mkt:anuncios:base44progresso', { n, t });
+    });
+    return { ok: true, ...res };
+  } catch(e) { return { ok: false, erro: e.message }; }
+});
+
+// ─── Pedidos Marketplace ──────────────────────────────────────────────
+ipcMain.handle('mkt:pedidos:listar', (_, contaId, filtros, pagina) =>
+  db.mktPedidos.listar(contaId, filtros || {}, pagina || 0));
+
+ipcMain.handle('mkt:pedidos:importar', async (_, contaId, diasAtras) => {
+  try {
+    const res = await shopee.importarPedidos(contaId, diasAtras || 30);
+    await _enviarPedidosPendentesBase44(contaId);
+    return { ok: true, ...res };
+  } catch(e) { return { ok: false, erro: e.message }; }
+});
+
+ipcMain.handle('mkt:pedidos:buscarNovos', async (_, contaId) => {
+  try {
+    const res = await shopee.buscarPedidosNovos(contaId);
+    if (res.novos > 0) await _enviarPedidosPendentesBase44(contaId);
+    return { ok: true, ...res };
+  } catch(e) { return { ok: false, erro: e.message }; }
+});
+
+ipcMain.handle('mkt:pedidos:enviarBase44', async (_, contaId) => {
+  try {
+    const n = await _enviarPedidosPendentesBase44(contaId);
+    return { ok: true, enviados: n };
+  } catch(e) { return { ok: false, erro: e.message }; }
+});
+
+// Atualiza um item do pedido (mapeamento manual no modal) e re-envia ao Base44
+ipcMain.handle('mkt:pedidos:atualizarItem', async (_, contaId, pedidoId, itemIdx, produto) => {
+  try {
+    const pedido = db.mktPedidos.getById(contaId, pedidoId);
+    if (!pedido) return { ok: false, erro: 'Pedido não encontrado' };
+
+    const itens = JSON.parse(pedido.itens_json || '[]');
+    if (itemIdx < 0 || itemIdx >= itens.length) return { ok: false, erro: 'Item inválido' };
+
+    itens[itemIdx] = {
+      ...itens[itemIdx],
+      produto_id:    produto.id,
+      produto_nome:  produto.nome,
+      produto_sku:   produto.sku || '',
+      nao_mapeado:   false,
+    };
+
+    // Se o anúncio tem item_id, salva mapeamento permanente no cadastro de anúncios
+    const itemId = itens[itemIdx].marketplace_anuncio_id;
+    if (itemId) {
+      db.mktAnuncios.mapear(contaId, itemId, produto.id, produto.nome, produto.sku || '');
+    }
+
+    // Verifica se ainda tem itens não mapeados
+    const aindaTemBloqueio = itens.some(i => i.nao_mapeado);
+    const novoStatus = aindaTemBloqueio ? pedido.status_shopee : pedido.status_shopee;
+
+    // Atualiza itens_json no banco
+    db.mktPedidos.atualizarItens(contaId, pedidoId, JSON.stringify(itens), aindaTemBloqueio ? 'pendente' : 'pendente');
+
+    // Re-envia ao Base44
+    const Store = require('electron-store');
+    const s = new Store();
+    const usuario = s.get('auth.usuario') || {};
+    const conta = shopee.getConta(contaId);
+    const contaInfo = { ...conta, empresa_id: conta?.empresa_id || usuario.empresa_id, empresa_nome: conta?.empresa_nome || usuario.empresa_nome };
+    const pedidoAtual = db.mktPedidos.getById(contaId, pedidoId);
+    const res = await api.enviarPedidoBase44(pedidoAtual, contaInfo);
+    db.mktPedidos.marcarEnviadoBase44(pedidoAtual.id, res._id || res.id || '');
+
+    return { ok: true, aindaTemBloqueio };
+  } catch(e) { return { ok: false, erro: e.message }; }
+});
+
+async function _enviarPedidosPendentesBase44(contaId) {
+  const conta = shopee.getConta(contaId);
+  if (!conta) return 0;
+  const Store = require('electron-store');
+  const s = new Store();
+  const usuario = s.get('auth.usuario') || {};
+  const contaInfo = {
+    ...conta,
+    empresa_id: conta.empresa_id || usuario.empresa_id || null,
+    empresa_nome: conta.empresa_nome || usuario.empresa_nome || null,
+    marketplace_config_id: conta.marketplace_config_id || contaId,
+  };
+  const pendentes = db.mktPedidos.getPendentesBase44(contaId);
+  let enviados = 0;
+  for (const p of pendentes) {
+    try {
+      const res = await api.enviarPedidoBase44(p, contaInfo);
+      db.mktPedidos.marcarEnviadoBase44(p.id, res._id || res.id || '');
+      enviados++;
+    } catch(e) {
+      db.mktPedidos.marcarErroBase44(p.id, e.message);
+      console.warn('[Pedidos] Erro ao enviar para Base44:', p.pedido_id, e.message);
+    }
+  }
+  if (enviados > 0 && mainWindow) {
+    mainWindow.webContents.send('mkt:pedidos:novos', { contaId, enviados });
+  }
+  return enviados;
+}
+
+// Polling automático a cada 5 minutos para todas as contas conectadas
+function _iniciarPollingPedidos() {
+  const INTERVALO = 5 * 60 * 1000;
+  const _poll = async () => {
+    const contas = shopee.listarContas().filter(c => c.conectado && c.access_token);
+    for (const c of contas) {
+      try {
+        const res = await shopee.buscarPedidosNovos(c.id);
+        if (res.novos > 0) {
+          console.log(`[Pedidos] ${res.novos} novo(s) pedido(s) para conta ${c.nome}`);
+          await _enviarPedidosPendentesBase44(c.id);
+        }
+      } catch(e) { console.warn('[Pedidos] Polling erro:', c.nome, e.message); }
+    }
+  };
+  setTimeout(() => { _poll(); setInterval(_poll, INTERVALO); }, 10000); // começa 10s após o app abrir
+}
 
 // Sync
 ipcMain.handle('sync:status', () => sync.getStatus());

@@ -147,15 +147,37 @@ contextBridge.exposeInMainWorld('pdv', {
     status:   () => ipcRenderer.invoke('ia:status'),
   },
 
-  // Shopee
-  shopee: {
-    status:            ()              => ipcRenderer.invoke('shopee:status'),
-    salvarCredenciais: (id, key, sb)   => ipcRenderer.invoke('shopee:salvarCredenciais', id, key, sb),
-    conectar:          ()              => ipcRenderer.invoke('shopee:conectar'),
-    desconectar:       ()              => ipcRenderer.invoke('shopee:desconectar'),
-    shopInfo:          ()              => ipcRenderer.invoke('shopee:shopInfo'),
-    anuncios:          (page)          => ipcRenderer.invoke('shopee:anuncios', page),
-    pedidos:           (status)        => ipcRenderer.invoke('shopee:pedidos', status),
+  // Marketplace multi-conta
+  mkt: {
+    listarContas:  (canal)        => ipcRenderer.invoke('mkt:listarContas', canal),
+    getConta:      (id)           => ipcRenderer.invoke('mkt:getConta', id),
+    salvarConta:   (dados)        => ipcRenderer.invoke('mkt:salvarConta', dados),
+    removerConta:  (id)           => ipcRenderer.invoke('mkt:removerConta', id),
+    conectar:      (id)           => ipcRenderer.invoke('mkt:conectar', id),
+    desconectar:   (id)           => ipcRenderer.invoke('mkt:desconectar', id),
+    shopInfo:      (id)           => ipcRenderer.invoke('mkt:shopInfo', id),
+    anuncios:      (id, page)     => ipcRenderer.invoke('mkt:anuncios', id, page),
+    pedidos:       (id, status)   => ipcRenderer.invoke('mkt:pedidos', id, status),
+    trocarCodigo:  (id, code, shopId) => ipcRenderer.invoke('mkt:trocarCodigo', id, code, shopId),
+    anunciosLocal: {
+      listar:          (contaId, busca, status, pagina) => ipcRenderer.invoke('mkt:anuncios:listar', contaId, busca, status, pagina),
+      total:           (contaId)             => ipcRenderer.invoke('mkt:anuncios:total', contaId),
+      importar:        (contaId)             => ipcRenderer.invoke('mkt:anuncios:importar', contaId),
+      sincronizarUm:   (contaId, itemId)     => ipcRenderer.invoke('mkt:anuncios:sincronizarUm', contaId, itemId),
+      verificarNovos:  (contaId)             => ipcRenderer.invoke('mkt:anuncios:verificarNovos', contaId),
+      onProgresso:     (cb)                  => ipcRenderer.on('mkt:anuncios:progresso', (_, d) => cb(d)),
+      enviarBase44:    (contaId)             => ipcRenderer.invoke('mkt:anuncios:enviarBase44', contaId),
+      mapear:          (contaId, itemId, produto) => ipcRenderer.invoke('mkt:anuncios:mapear', contaId, itemId, produto),
+      onBase44Progresso: (cb)               => ipcRenderer.on('mkt:anuncios:base44progresso', (_, d) => cb(d)),
+    },
+    pedidosLocal: {
+      listar:       (contaId, filtros, pagina) => ipcRenderer.invoke('mkt:pedidos:listar', contaId, filtros, pagina),
+      importar:     (contaId, dias)            => ipcRenderer.invoke('mkt:pedidos:importar', contaId, dias),
+      buscarNovos:  (contaId)                  => ipcRenderer.invoke('mkt:pedidos:buscarNovos', contaId),
+      enviarBase44: (contaId)                  => ipcRenderer.invoke('mkt:pedidos:enviarBase44', contaId),
+      onNovos:      (cb)                       => ipcRenderer.on('mkt:pedidos:novos', (_, d) => cb(d)),
+      atualizarItem:(contaId, pedidoId, itemIdx, produto) => ipcRenderer.invoke('mkt:pedidos:atualizarItem', contaId, pedidoId, itemIdx, produto),
+    },
   },
 
   // App
