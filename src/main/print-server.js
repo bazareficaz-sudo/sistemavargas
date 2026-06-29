@@ -101,6 +101,148 @@ function gerarHtmlCupom(dados) {
 </html>`;
 }
 
+// ─── Cupom de Entrega ────────────────────────────────────────────────────────
+
+function gerarHtmlCupomEntrega(dados) {
+  const {
+    empresa_nome = 'PDV VARGAS',
+    cliente_nome, cliente_telefone, cliente_doc,
+    logradouro, numero, complemento, bairro, cidade, estado, cep,
+    referencia, obs,
+    data_entrega, turno,
+    itens = [],
+    total_entrega = 0,
+    numero_venda,
+    emitido_em,
+  } = dados;
+
+  const fmt = (v) => Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const agora = emitido_em ? new Date(emitido_em).toLocaleString('pt-BR') : new Date().toLocaleString('pt-BR');
+
+  const turnoLabel = { manha: 'Manhã', tarde: 'Tarde', noite: 'Noite', qualquer: 'Qualquer período' }[turno] || turno || '';
+
+  const dataFmt = data_entrega
+    ? new Date(data_entrega + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' })
+    : '—';
+
+  const enderecoLinha1 = [logradouro, numero].filter(Boolean).join(', ');
+  const enderecoLinha2 = [complemento, bairro].filter(Boolean).join(' — ');
+  const enderecoLinha3 = [cidade, estado, cep].filter(Boolean).join(' - ');
+
+  const linhasItens = itens.map(i => `
+    <tr>
+      <td colspan="2" style="padding-top:5px;font-weight:bold">${i.produto_nome}</td>
+    </tr>
+    <tr>
+      <td style="color:#555">${Math.abs(i.quantidade || 1)} un</td>
+      <td style="text-align:right">R$ ${fmt(Math.abs(i.total || 0))}</td>
+    </tr>`).join('');
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  @page { size: 72mm auto; margin: 4mm 3mm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 9.5pt;
+    color: #000;
+    background: #fff;
+    width: 72mm;
+    margin: 0;
+    padding: 0;
+  }
+  .center { text-align: center; }
+  .right  { text-align: right; }
+  .bold   { font-weight: bold; }
+  .sm     { font-size: 8pt; }
+  .lg     { font-size: 13pt; }
+  .xl     { font-size: 15pt; }
+  .sep    { border: none; border-top: 1px dashed #000; margin: 6px 0; }
+  .sep2   { border: none; border-top: 2px solid #000; margin: 6px 0; }
+  table   { width: 100%; border-collapse: collapse; }
+  td      { vertical-align: top; padding: 1px 0; }
+  .bloco  { margin-bottom: 8px; }
+  .label  { font-size: 7.5pt; color: #555; text-transform: uppercase; margin-bottom: 1px; }
+  .val    { font-size: 9.5pt; }
+  .agenda-box {
+    border: 2px solid #000;
+    border-radius: 2px;
+    padding: 6px 8px;
+    margin: 8px 0;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+  <div class="center bold lg">${empresa_nome}</div>
+  <div class="center bold" style="font-size:11pt;letter-spacing:1px;margin-top:2px">COMPROVANTE DE ENTREGA</div>
+  <div class="center sm">${agora}</div>
+  ${numero_venda ? `<div class="center sm">Pedido #${numero_venda}</div>` : ''}
+
+  <hr class="sep2">
+
+  <div class="bloco">
+    <div class="label">Cliente</div>
+    <div class="val bold">${cliente_nome || '—'}</div>
+    ${cliente_telefone ? `<div class="val">Tel: ${cliente_telefone}</div>` : ''}
+    ${cliente_doc ? `<div class="val sm">Doc: ${cliente_doc}</div>` : ''}
+  </div>
+
+  <hr class="sep">
+
+  <div class="bloco">
+    <div class="label">Endereco de Entrega</div>
+    <div class="val bold">${enderecoLinha1 || '—'}</div>
+    ${enderecoLinha2 ? `<div class="val">${enderecoLinha2}</div>` : ''}
+    ${enderecoLinha3 ? `<div class="val">${enderecoLinha3}</div>` : ''}
+  </div>
+
+  ${referencia ? `
+  <div class="bloco">
+    <div class="label">Ponto de Referencia</div>
+    <div class="val">${referencia}</div>
+  </div>` : ''}
+
+  ${obs ? `
+  <div class="bloco">
+    <div class="label">Observacao / Instrucao</div>
+    <div class="val sm">${obs}</div>
+  </div>` : ''}
+
+  <div class="agenda-box">
+    <div class="label" style="color:#000">Agendamento</div>
+    <div class="bold xl">${dataFmt}</div>
+    ${turnoLabel ? `<div class="bold" style="margin-top:3px;font-size:11pt">Periodo: ${turnoLabel}</div>` : ''}
+  </div>
+
+  <hr class="sep">
+
+  <div class="label">Itens para Entrega</div>
+  <table>${linhasItens}</table>
+  <hr class="sep">
+
+  <table>
+    <tr>
+      <td class="bold" style="font-size:11pt">TOTAL ENTREGA</td>
+      <td class="right bold" style="font-size:11pt">R$ ${fmt(total_entrega)}</td>
+    </tr>
+  </table>
+
+  <hr class="sep">
+  <div class="center sm" style="margin-top:6px">Obrigado pela preferencia!</div>
+  <div class="center sm" style="margin-top:2px">_____________________________</div>
+  <div class="center sm" style="margin-top:2px">Assinatura do Entregador</div>
+  <div class="center sm" style="margin-top:10px">_____________________________</div>
+  <div class="center sm" style="margin-top:2px">Assinatura / Ciencia do Cliente</div>
+  <br><br>
+</body>
+</html>`;
+}
+
 // ─── Impressão local (via Electron) ─────────────────────────────────────────
 
 async function imprimirLocal(dados) {
@@ -112,7 +254,8 @@ async function imprimirLocal(dados) {
       webPreferences: { nodeIntegration: false, contextIsolation: true },
     });
 
-    win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(gerarHtmlCupom(dados)));
+    const html = dados._html || gerarHtmlCupom(dados);
+    win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
 
     win.webContents.once('did-finish-load', () => {
       const nomePrinter = store.get('config.impressora_nome') || '';
@@ -259,4 +402,5 @@ module.exports = {
   enviarParaServidor,
   listarImpressoras,
   gerarHtmlCupom,
+  gerarHtmlCupomEntrega,
 };

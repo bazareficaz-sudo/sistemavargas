@@ -109,6 +109,7 @@ contextBridge.exposeInMainWorld('pdv', {
   print: {
     local:         (dados)  => ipcRenderer.invoke('print:local', dados),
     servidor:      (dados)  => ipcRenderer.invoke('print:servidor', dados),
+    entrega:       (dados)  => ipcRenderer.invoke('print:entrega', dados),
     serverStart:   (porta)  => ipcRenderer.invoke('print:server:start', porta),
     serverStop:    ()       => ipcRenderer.invoke('print:server:stop'),
     serverStatus:  ()       => ipcRenderer.invoke('print:server:status'),

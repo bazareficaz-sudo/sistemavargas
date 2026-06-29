@@ -495,6 +495,15 @@ ipcMain.handle('auth:logout', () => {
 ipcMain.handle('print:local', async (_, dados) => {
   return printServer.adicionarNaFila(dados);
 });
+ipcMain.handle('print:entrega', async (_, dados) => {
+  const html = printServer.gerarHtmlCupomEntrega(dados);
+  const ip   = store.get('config.print_server_ip');
+  if (ip) {
+    try { return await printServer.enviarParaServidor({ ...dados, _html: html }); }
+    catch { /* cai no local */ }
+  }
+  return printServer.imprimirLocal({ ...dados, _html: html });
+});
 ipcMain.handle('print:servidor', async (_, dados) => {
   try {
     return await printServer.enviarParaServidor(dados);

@@ -827,8 +827,9 @@ const PDV = (() => {
   </div>
 </div>
 
-<div class="modal-actions">
+<div class="modal-actions" style="flex-wrap:wrap;gap:8px">
   <button class="btn btn-ghost" onclick="PDV._voltarParaPagamento()">← Voltar ao Carrinho</button>
+  <button class="btn btn-secondary" onclick="PDV._imprimirEntregaModal()" style="gap:6px">🖨️ Imprimir</button>
   <button class="btn btn-primary btn-lg" onclick="PDV._confirmarEntrega()">Confirmar → Pagamento</button>
 </div>`, 'Agendar Entrega 🚚');
   }
@@ -863,6 +864,37 @@ const PDV = (() => {
 
   function _voltarParaPagamento() {
     Modal.close();
+  }
+
+  async function _imprimirEntregaModal() {
+    const c = selectedClient || {};
+    const itens = _itensParaEntrega();
+    const dados = {
+      empresa_nome:     (await window.pdv.config.get('auth.usuario'))?.empresa_nome || 'PDV Vargas',
+      cliente_nome:     c.nome || document.getElementById('ent-telefone')?.value || '',
+      cliente_telefone: document.getElementById('ent-telefone')?.value || '',
+      cliente_doc:      document.getElementById('ent-doc')?.value || '',
+      cep:              document.getElementById('ent-cep')?.value || '',
+      logradouro:       document.getElementById('ent-logradouro')?.value || '',
+      numero:           document.getElementById('ent-numero')?.value || '',
+      complemento:      document.getElementById('ent-complemento')?.value || '',
+      bairro:           document.getElementById('ent-bairro')?.value || '',
+      cidade:           document.getElementById('ent-cidade')?.value || '',
+      estado:           document.getElementById('ent-estado')?.value || '',
+      referencia:       document.getElementById('ent-referencia')?.value || '',
+      obs:              document.getElementById('ent-obs')?.value || '',
+      data_entrega:     document.getElementById('ent-data')?.value || '',
+      turno:            document.getElementById('ent-turno')?.value || 'qualquer',
+      itens: itens.map(i => ({ produto_nome: i.produto_nome, quantidade: i.quantidade, total: i.total })),
+      total_entrega:    itens.reduce((s, i) => s + i.total, 0),
+      emitido_em:       new Date().toISOString(),
+    };
+    try {
+      await window.pdv.print.entrega(dados);
+      Toast.show('Comprovante de entrega enviado para impressão', 'success');
+    } catch(e) {
+      Toast.show('Erro ao imprimir: ' + e.message, 'error');
+    }
   }
 
   async function _confirmarEntrega() {
@@ -1530,7 +1562,7 @@ const PDV = (() => {
     toggleEntregar, _selecionarTurno, entrarModoEdicao, cancelarEdicao,
     setPayment, calcTroco, finalizarVenda, abrirPagamento, updateTotals,
     _selectPay, _calcTrocoModal, _confirmarPagamento,
-    _abrirModalEntrega, _buscarCep, _voltarParaPagamento, _confirmarEntrega,
+    _abrirModalEntrega, _buscarCep, _voltarParaPagamento, _confirmarEntrega, _imprimirEntregaModal,
     _abrirModalVendedor, _validarVendedor, _finalizarComVendedor, _vendedorAtualValido,
     openClientSearch, searchClientes, selectClient, clearClient,
     _abrirNovoCliente, _salvarNovoCliente,

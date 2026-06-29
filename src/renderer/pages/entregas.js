@@ -228,6 +228,7 @@ const Entregas = (() => {
 </div>
 <div class="modal-actions">
   <button class="btn btn-ghost" onclick="Modal.close()">Fechar</button>
+  <button class="btn btn-secondary" onclick="Entregas._imprimirEntrega('${id}')">🖨️ Imprimir</button>
 </div>`, `Entrega — ${e.cliente_nome || '#' + id.substring(0,6)}`);
   }
 
@@ -239,6 +240,40 @@ const Entregas = (() => {
     Toast.show(`Status: ${STATUS_LABEL[novoStatus]?.label || novoStatus}`, 'success');
     Modal.close();
     await recarregar();
+  }
+
+  async function _imprimirEntrega(id) {
+    const e = await window.pdv.entregas.getById(id);
+    if (!e) { Toast.show('Entrega não encontrada', 'error'); return; }
+    const itens = Array.isArray(e.itens) ? e.itens : (e.itens ? JSON.parse(e.itens) : []);
+    const empresaNome = (await window.pdv.config.get('auth.usuario'))?.empresa_nome || 'PDV Vargas';
+    const dados = {
+      empresa_nome:     empresaNome,
+      cliente_nome:     e.cliente_nome || '',
+      cliente_telefone: e.cliente_telefone || '',
+      cliente_doc:      e.cliente_documento || '',
+      cep:              e.cep || '',
+      logradouro:       e.logradouro || '',
+      numero:           e.numero || '',
+      complemento:      e.complemento || '',
+      bairro:           e.bairro || '',
+      cidade:           e.cidade || '',
+      estado:           e.estado || '',
+      referencia:       e.referencia || '',
+      obs:              e.observacao || '',
+      data_entrega:     e.data_agendada || '',
+      turno:            e.turno || 'qualquer',
+      itens:            itens.map(i => ({ produto_nome: i.produto_nome, quantidade: i.quantidade, total: i.subtotal || i.total || 0 })),
+      total_entrega:    e.valor_total_entrega || 0,
+      numero_venda:     e.venda_numero || null,
+      emitido_em:       new Date().toISOString(),
+    };
+    try {
+      await window.pdv.print.entrega(dados);
+      Toast.show('Comprovante enviado para impressão', 'success');
+    } catch(err) {
+      Toast.show('Erro ao imprimir: ' + err.message, 'error');
+    }
   }
 
   async function _salvarLogistica(id) {
@@ -255,5 +290,5 @@ const Entregas = (() => {
     await recarregar();
   }
 
-  return { render, init, recarregar, filtrar, abrirDetalhe, _mudarStatus, _salvarLogistica };
+  return { render, init, recarregar, filtrar, abrirDetalhe, _mudarStatus, _salvarLogistica, _imprimirEntrega };
 })();
