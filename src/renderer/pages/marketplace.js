@@ -7,6 +7,7 @@ const Marketplace = (() => {
   // ─── Canais disponíveis ─────────────────────────────────────────
   const CANAIS = {
     shopee:        { nome: 'Shopee',         icon: '🛍️', cor: '#ee4d2d', ativo: true,  temOAuth: true  },
+    tiktok:        { nome: 'TikTok Shop',    icon: '🎵', cor: '#000000', ativo: true,  temOAuth: true  },
     mercadolivre:  { nome: 'Mercado Livre',  icon: '🛒', cor: '#ffe600', ativo: false, textoCor: '#333' },
     woocommerce:   { nome: 'WooCommerce',    icon: '🛒', cor: '#7f54b3', ativo: false },
     magalu:        { nome: 'Magazine Luiza', icon: '🏬', cor: '#0086ff', ativo: false },
@@ -176,6 +177,20 @@ const Marketplace = (() => {
       </label>
     </div>
 
+    <!-- Campos TikTok Shop -->
+    <div id="mc-campos-tiktok" style="display:none;gap:12px;flex-direction:column">
+      <div style="background:var(--bg3);border-radius:10px;padding:12px 14px;font-size:12px;color:var(--text2);line-height:1.6">
+        🎵 As credenciais do TikTok Shop já estão configuradas. Basta salvar e autorizar sua loja.
+      </div>
+      <div style="background:var(--bg3);border-radius:8px;padding:10px 14px;font-size:11px;color:var(--text3)">
+        App Key: <code>6k63nslih1hqg</code> &nbsp;·&nbsp; Pronto para conectar
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text2);cursor:pointer">
+        <input type="checkbox" id="mc-tiktok-sandbox">
+        Usar ambiente Sandbox (loja de teste — marque enquanto o app não estiver aprovado)
+      </label>
+    </div>
+
   </div>
   <div class="modal-actions">
     <button class="btn btn-ghost" onclick="Modal.close()">Cancelar</button>
@@ -191,7 +206,8 @@ const Marketplace = (() => {
 
   function _onCanalChange() {
     const canal = document.getElementById('mc-canal')?.value;
-    document.getElementById('mc-campos-shopee').style.display = canal === 'shopee' ? 'grid' : 'none';
+    document.getElementById('mc-campos-shopee').style.display  = canal === 'shopee'  ? 'grid'  : 'none';
+    document.getElementById('mc-campos-tiktok').style.display  = canal === 'tiktok'  ? 'flex'  : 'none';
   }
 
   async function salvarNovaConta() {
@@ -208,30 +224,70 @@ const Marketplace = (() => {
     }
 
     const conta = {
-      id:          null, // gerado pelo main process
+      id:          null,
       canal,
       nome,
       empresa:     empresa || '',
-      partner_id:  partnerId || '',
-      partner_key: partnerKey || '',
-      sandbox,
+      partner_id:  canal === 'shopee' ? (partnerId || '') : '',
+      partner_key: canal === 'shopee' ? (partnerKey || '') : '',
+      sandbox:     canal === 'shopee' ? sandbox : (canal === 'tiktok' ? (document.getElementById('mc-tiktok-sandbox')?.checked || false) : false),
       conectado:   false,
     };
 
-    await window.pdv.mkt.salvarConta(conta);
+    const salva = await window.pdv.mkt.salvarConta(conta);
     Modal.close();
 
     if (canal === 'shopee') {
       Toast.show('Abrindo Shopee para autorizar a conta...', 'info', 8000);
-      const res = await window.pdv.mkt.conectar(conta.id);
-      if (res.ok) {
-        Toast.show(`✅ Conectado! Loja: ${res.shop_name}`, 'success', 5000);
+      const res = await window.pdv.mkt.conectar(salva?.id || conta.id);
+      if (res?.ok) Toast.show(`✅ Conectado! Loja: ${res.shop_name}`, 'success', 5000);
+      else Toast.show(`Erro: ${res?.erro}`, 'error', 6000);
+    } else if (canal === 'tiktok') {
+      Toast.show('Abrindo TikTok Shop para autorizar...', 'info', 8000);
+      const res = await window.pdv.mkt.conectar(salva?.id || conta.id);
+      if (res?.ok) {
+        _abrirModalCodigoTikTok(salva?.id || conta.id);
       } else {
-        Toast.show(`Erro: ${res.erro}`, 'error', 6000);
+        Toast.show(`Erro: ${res?.erro}`, 'error', 6000);
       }
     }
 
     ir('canais');
+  }
+
+  function _abrirModalCodigoTikTok(contaId) {
+    Modal.open(`
+<div style="padding:4px 0">
+  <div style="font-size:14px;font-weight:600;margin-bottom:8px">🎵 Autorização TikTok Shop</div>
+  <div style="font-size:12px;color:var(--text2);margin-bottom:16px;line-height:1.6">
+    O navegador foi aberto com a página de autorização do TikTok Shop.<br>
+    Após autorizar, o TikTok vai redirecionar para uma página com um <strong>código de autorização</strong> na URL.<br><br>
+    Exemplo: <code style="font-size:10px">...?code=<strong>SEU_CODIGO</strong>&state=...</code><br><br>
+    Cole o código abaixo:
+  </div>
+  <label class="form-label">Código de autorização (auth_code)</label>
+  <input id="tiktok-auth-code" class="input" style="width:100%;margin-bottom:4px" placeholder="Cole o código aqui...">
+  <div style="font-size:10px;color:var(--text3);margin-bottom:16px">O código aparece na URL após o redirecionamento</div>
+  <div class="modal-actions">
+    <button class="btn btn-ghost" onclick="Modal.close()">Cancelar</button>
+    <button class="btn btn-primary" onclick="Marketplace._confirmarCodigoTikTok('${contaId}')">✓ Confirmar</button>
+  </div>
+</div>`, 'Conectar TikTok Shop');
+  }
+
+  async function _confirmarCodigoTikTok(contaId) {
+    const code = document.getElementById('tiktok-auth-code')?.value?.trim();
+    if (!code) { Toast.show('Cole o código de autorização', 'warning'); return; }
+    Modal.close();
+    Toast.show('Conectando TikTok Shop...', 'info', 5000);
+    try {
+      await window.pdv.mkt.trocarCodigo(contaId, code, null);
+      const info = await window.pdv.mkt.shopInfo(contaId);
+      Toast.show(`✅ TikTok Shop conectado! ${info?.shop_name || ''}`, 'success', 5000);
+      ir('canais');
+    } catch(e) {
+      Toast.show(`Erro ao conectar: ${e.message}`, 'error', 6000);
+    }
   }
 
   async function editarConta(id) {
@@ -270,6 +326,13 @@ const Marketplace = (() => {
     <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text2);cursor:pointer">
       <input type="checkbox" id="ec-sandbox" ${conta.sandbox?'checked':''}>Usar Sandbox
     </label>` : ''}
+    ${conta.canal === 'tiktok' ? `
+    <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text2);cursor:pointer">
+      <input type="checkbox" id="ec-sandbox" ${conta.sandbox?'checked':''}>Usar Sandbox (loja de teste)
+    </label>
+    ${conta.shop_name ? `<div style="font-size:11px;color:var(--text3);padding:8px 12px;background:var(--bg3);border-radius:8px">
+      Loja: <b>${conta.shop_name}</b> · ID: ${conta.shop_id || '—'}
+    </div>` : ''}` : ''}
   </div>
   <div class="modal-actions">
     <button class="btn btn-ghost" onclick="Modal.close()">Cancelar</button>
@@ -295,9 +358,13 @@ const Marketplace = (() => {
   }
 
   async function reconectar(id) {
-    // Abre o browser com a URL OAuth e mostra modal para colar o código manualmente
-    window.pdv.mkt.conectar(id); // abre browser, não aguarda
-    await _modalCodigoManual(id);
+    const conta = await window.pdv.mkt.getConta(id);
+    window.pdv.mkt.conectar(id);
+    if (conta?.canal === 'tiktok') {
+      _abrirModalCodigoTikTok(id);
+    } else {
+      await _modalCodigoManual(id);
+    }
   }
 
   function _modalCodigoManual(contaId) {
@@ -1318,6 +1385,7 @@ const Marketplace = (() => {
   return {
     render, init, ir,
     modalAddConta, salvarNovaConta, editarConta, _confirmarEdicao, reconectar, removerConta,
+    _onCanalChange, _abrirModalCodigoTikTok, _confirmarCodigoTikTok,
     _modalCodigoManual, _extrairDaUrl, _processarCodigoManual,
     irContaAnuncios, _trocarContaAnuncios, _carregarAnuncios, _buscarAnuncios,
     _importarTodos, _verificarNovos, _sincronizarAnuncio, _enviarBase44, _irPagina,

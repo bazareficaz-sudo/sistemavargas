@@ -16,6 +16,14 @@ const updater = require('./updater');
 const focusnfe = require('./focusnfe');
 const ia       = require('./ia');
 const shopee   = require('./shopee');
+const tiktok   = require('./tiktok');
+
+// Roteador: retorna o módulo certo conforme o canal da conta
+function _mkt(contaId) {
+  const conta = shopee.getConta(contaId) || tiktok.getConta(contaId);
+  if (!conta) return shopee; // fallback
+  return conta.canal === 'tiktok' ? tiktok : shopee;
+}
 
 nativeTheme.themeSource = 'dark';
 
@@ -234,25 +242,37 @@ ipcMain.handle('ia:descricao', async (_, nome, categoria, marca, unidade) => ia.
 ipcMain.handle('ia:lote', async (_, produtos) => ia.enriquecerLote(produtos));
 ipcMain.handle('ia:status', () => ({ configurado: !!ia.getApiKey() }));
 
-// ─── Marketplace (multi-conta) ─────────────────────────────────────
-ipcMain.handle('mkt:listarContas',   (_, canal)     => shopee.listarContas(canal));
-ipcMain.handle('mkt:getConta',       (_, id)        => shopee.getConta(id));
-ipcMain.handle('mkt:salvarConta',    (_, dados)     => { if (!dados.id) dados.id = require('crypto').randomUUID(); return shopee.salvarConta(dados); });
-ipcMain.handle('mkt:removerConta',   (_, id)        => { shopee.removerConta(id); return { ok: true }; });
-ipcMain.handle('mkt:conectar',       async (_, id)  => {
-  try   { return { ok: true,  ...(await shopee.iniciarAuth(id)) }; }
-  catch (e) { return { ok: false, erro: e.message }; }
+// ─── Marketplace (multi-conta, multi-canal) ────────────────────────
+ipcMain.handle('mkt:listarContas', (_, canal) => {
+  const shopeeContas = shopee.listarContas(canal === 'tiktok' ? null : canal) || [];
+  const tiktokContas = tiktok.listarContas() || [];
+  const todas = [...shopeeContas, ...tiktokContas];
+  return canal ? todas.filter(c => c.canal === canal) : todas;
 });
-ipcMain.handle('mkt:desconectar',    async (_, id)  => { await shopee.desconectar(id); return { ok: true }; });
-ipcMain.handle('mkt:shopInfo',       async (_, id)  => { try { return await shopee.getShopInfo(id); }   catch(e) { return { erro: e.message }; } });
-ipcMain.handle('mkt:anuncios',       async (_, id, page)   => { try { return await shopee.getAnuncios(id, page); } catch(e) { return { erro: e.message }; } });
-ipcMain.handle('mkt:pedidos',        async (_, id, status) => { try { return await shopee.getPedidos(id, status); } catch(e) { return { erro: e.message }; } });
-ipcMain.handle('mkt:trocarCodigo',      async (_, id, code, shopId) => shopee.trocarCodigo(id, code, shopId));
+ipcMain.handle('mkt:getConta',     (_, id) => shopee.getConta(id) || tiktok.getConta(id));
+ipcMain.handle('mkt:salvarConta',  (_, dados) => {
+  if (!dados.id) dados.id = require('crypto').randomUUID();
+  return dados.canal === 'tiktok' ? tiktok.salvarConta(dados) : shopee.salvarConta(dados);
+});
+ipcMain.handle('mkt:removerConta', (_, id) => { shopee.removerConta(id); return { ok: true }; });
+ipcMain.handle('mkt:conectar',     async (_, id) => {
+  try { return { ok: true, ...( await _mkt(id).conectar(id) ) }; }
+  catch(e) { return { ok: false, erro: e.message }; }
+});
+ipcMain.handle('mkt:desconectar',  async (_, id) => { try { await shopee.desconectar(id); } catch {} return { ok: true }; });
+ipcMain.handle('mkt:shopInfo',     async (_, id) => { try { return await _mkt(id).getShopInfo(id); } catch(e) { return { erro: e.message }; } });
+ipcMain.handle('mkt:anuncios',     async (_, id, page) => { try { return await shopee.getAnuncios(id, page); } catch(e) { return { erro: e.message }; } });
+ipcMain.handle('mkt:pedidos',      async (_, id, status) => { try { return await shopee.getPedidos(id, status); } catch(e) { return { erro: e.message }; } });
+ipcMain.handle('mkt:trocarCodigo', async (_, id, code, shopId) => {
+  const conta = shopee.getConta(id) || tiktok.getConta(id);
+  if (conta?.canal === 'tiktok') return tiktok.trocarCodigo(id, code);
+  return shopee.trocarCodigo(id, code, shopId);
+});
 ipcMain.handle('mkt:anuncios:listar',   (_, contaId, busca, status, pagina) => db.mktAnuncios.listar(contaId, busca, status, pagina));
 ipcMain.handle('mkt:anuncios:total',    (_, contaId)               => db.mktAnuncios.total(contaId));
 ipcMain.handle('mkt:anuncios:importar', async (_, contaId) => {
   try {
-    const resultado = await shopee.importarTodosAnuncios(contaId, (n, t) => {
+    const resultado = await _mkt(contaId).importarTodosAnuncios(contaId, (n, t) => {
       mainWindow?.webContents.send('mkt:anuncios:progresso', { n, t });
     });
     return { ok: true, ...resultado };
@@ -330,7 +350,7 @@ ipcMain.handle('mkt:pedidos:listar', (_, contaId, filtros, pagina) =>
 
 ipcMain.handle('mkt:pedidos:importar', async (_, contaId, diasAtras) => {
   try {
-    const res = await shopee.importarPedidos(contaId, diasAtras || 30);
+    const res = await _mkt(contaId).importarPedidos(contaId, diasAtras || 30);
     await _enviarPedidosPendentesBase44(contaId);
     return { ok: true, ...res };
   } catch(e) { return { ok: false, erro: e.message }; }
@@ -338,7 +358,7 @@ ipcMain.handle('mkt:pedidos:importar', async (_, contaId, diasAtras) => {
 
 ipcMain.handle('mkt:pedidos:buscarNovos', async (_, contaId) => {
   try {
-    const res = await shopee.buscarPedidosNovos(contaId);
+    const res = await _mkt(contaId).buscarPedidosNovos(contaId);
     if (res.novos > 0) await _enviarPedidosPendentesBase44(contaId);
     return { ok: true, ...res };
   } catch(e) { return { ok: false, erro: e.message }; }
@@ -429,10 +449,13 @@ async function _enviarPedidosPendentesBase44(contaId) {
 function _iniciarPollingPedidos() {
   const INTERVALO = 5 * 60 * 1000;
   const _poll = async () => {
-    const contas = shopee.listarContas().filter(c => c.conectado && c.access_token);
+    const contas = [
+      ...shopee.listarContas().filter(c => c.conectado && c.access_token),
+      ...tiktok.listarContas().filter(c => c.conectado && c.access_token),
+    ];
     for (const c of contas) {
       try {
-        const res = await shopee.buscarPedidosNovos(c.id);
+        const res = await _mkt(c.id).buscarPedidosNovos(c.id);
         if (res.novos > 0) {
           console.log(`[Pedidos] ${res.novos} novo(s) pedido(s) para conta ${c.nome}`);
           await _enviarPedidosPendentesBase44(c.id);

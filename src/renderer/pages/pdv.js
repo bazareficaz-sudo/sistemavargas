@@ -580,6 +580,12 @@ const PDV = (() => {
     if (cart.length === 0) { Toast.show('Carrinho vazio', 'warning'); return; }
     const total = getTotal();
 
+    // Se há itens de entrega e ainda não agendou, abre tela de entrega primeiro
+    if (_itensParaEntrega().length > 0 && !dadosEntrega) {
+      _abrirModalEntrega();
+      return;
+    }
+
     // Devolução com saldo positivo para o cliente
     if (total < 0) {
       const valorDevolver = Math.abs(total);
