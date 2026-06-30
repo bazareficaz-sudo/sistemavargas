@@ -154,7 +154,17 @@ function mapCliente(c) {
     nome:             c.nome,
     cpf_cnpj:         c.cpf_cnpj        || null,
     telefone:         c.telefone        || null,
+    whatsapp:         c.whatsapp        || null,
     email:            c.email           || null,
+    cep:              c.cep             || null,
+    logradouro:       c.logradouro      || c.endereco || null,
+    numero:           c.numero          || null,
+    complemento:      c.complemento     || null,
+    bairro:           c.bairro          || null,
+    cidade:           c.cidade          || null,
+    estado:           c.estado          || null,
+    referencia:       c.referencia      || null,
+    obs_entrega:      c.obs_entrega     || null,
     limite_credito:   c.limite_credito  || 0,
     saldo_credito:    c.saldo_credito   || 0,
     saldo_devedor:    c.saldo_devedor   || 0,
@@ -203,6 +213,18 @@ async function syncDownClientes() {
   } else {
     console.log('[SYNC] Clientes: nenhuma atualização');
   }
+}
+
+async function syncForcarClientes() {
+  // Força re-sync completo ignorando data de última sync
+  store.delete('sync.ultima_sync_clientes');
+  const clientes = await api.sincronizarClientes(null);
+  if (clientes.length > 0) {
+    db.clientes.upsertBatch(clientes.map(mapCliente));
+    store.set('sync.ultima_sync_clientes', new Date().toISOString());
+  }
+  console.log(`[SYNC] Clientes forçado: ${clientes.length} sincronizados`);
+  return { total: clientes.length };
 }
 
 async function syncDownEstoque() {
@@ -539,4 +561,4 @@ function stopAutoSync() {
   if (syncInterval) clearInterval(syncInterval);
 }
 
-module.exports = { startAutoSync, stopAutoSync, syncNow, syncFila, getStatus, checkOnline, syncUpProdutos };
+module.exports = { startAutoSync, stopAutoSync, syncNow, syncFila, getStatus, checkOnline, syncUpProdutos, syncForcarClientes };

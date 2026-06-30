@@ -45,6 +45,8 @@ function createWindow() {
   mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
 
   mainWindow.once('ready-to-show', () => {
+    // Migrar campos empresa_fiscal_id/empresa_estoque_id de permissoes para o usuário
+    _migrarEmpresasUsuario();
     _iniciarPollingPedidos();
     sync.startAutoSync(mainWindow);
     // Auto-iniciar servidor de impressão se configurado como CAIXA
@@ -59,6 +61,39 @@ function createWindow() {
   });
 
   mainWindow.on('closed', () => { mainWindow = null; });
+}
+
+// ─── Migrar campos de empresa do usuário logado ─────────────────
+function _migrarEmpresasUsuario() {
+  const usuario = store.get('auth.usuario');
+  if (!usuario) return;
+  const perms = usuario.permissoes || {};
+  let alterado = false;
+
+  if (!usuario.empresa_fiscal_id && perms.empresa_emissao_fiscal_id) {
+    usuario.empresa_fiscal_id = perms.empresa_emissao_fiscal_id;
+    alterado = true;
+  }
+  if (!usuario.empresa_estoque_id && perms.estoque_empresa_id) {
+    usuario.empresa_estoque_id = perms.estoque_empresa_id;
+    alterado = true;
+  }
+  if (!usuario.deposito_id && perms.estoque_deposito_id) {
+    usuario.deposito_id = perms.estoque_deposito_id;
+    alterado = true;
+  }
+  if (!usuario.unificar_estoque && perms.unificar_estoque) {
+    usuario.unificar_estoque = perms.unificar_estoque;
+    alterado = true;
+  }
+
+  if (alterado) {
+    store.set('auth.usuario', usuario);
+    console.log('[AUTH] Empresas migradas de permissoes:',
+      'fiscal:', usuario.empresa_fiscal_id,
+      'estoque:', usuario.empresa_estoque_id,
+      'deposito:', usuario.deposito_id);
+  }
 }
 
 // ─── System Tray ────────────────────────────────────────────────
@@ -145,6 +180,24 @@ ipcMain.handle('clientes:buscar', (_, query) => db.clientes.buscar(query));
 ipcMain.handle('clientes:getById', (_, id) => db.clientes.getById(id));
 ipcMain.handle('clientes:salvar', (_, cliente) => db.clientes.salvar(cliente));
 ipcMain.handle('clientes:credito', (_, clienteId) => db.clientes.getCredito(clienteId));
+ipcMain.handle('clientes:syncForcar', async () => {
+  try {
+    return await sync.syncForcarClientes();
+  } catch(e) {
+    return { erro: e.message };
+  }
+});
+ipcMain.handle('clientes:atualizarEndereco', async (_, remoteId, dados) => {
+  try {
+    // Atualiza local
+    db.clientes.atualizarEndereco(remoteId, dados);
+    // Atualiza no Base44
+    const res = await api.atualizarClienteEndereco(remoteId, dados);
+    return { ok: true, res };
+  } catch(e) {
+    return { erro: e.message };
+  }
+});
 
 // Vendedores
 ipcMain.handle('vendedores:getByCodigo', (_, codigo) => db.vendedores.getByCodigo(codigo));

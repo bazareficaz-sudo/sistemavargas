@@ -303,16 +303,30 @@ async function atualizarCliente(remoteId, dados) {
   return put(`/entities/Cliente/${remoteId}`, dados);
 }
 
+async function atualizarClienteEndereco(remoteId, dados) {
+  // Atualiza só campos não-nulos para não sobrescrever dados existentes
+  const payload = {};
+  const campos = ['telefone','whatsapp','cep','logradouro','numero','complemento','bairro','cidade','estado','referencia','obs_entrega'];
+  campos.forEach(c => { if (dados[c]) payload[c] = dados[c]; });
+  if (!Object.keys(payload).length) return null;
+  return put(`/entities/Cliente/${remoteId}`, payload);
+}
+
 async function sincronizarClientes(ultimaSync = null) {
   const clientes = [];
   const limit = 200;
   let skip = 0;
+  const usuario = store.get('auth.usuario') || {};
 
-  const query = { ativo: true };
+  // Respeita empresa de estoque; se unificar_estoque, busca sem filtro de empresa
+  const query = {};
+  if (!usuario.unificar_estoque && usuario.empresa_estoque_id) {
+    query.empresa_id = usuario.empresa_estoque_id;
+  }
   if (ultimaSync) query.updated_date = { $gt: ultimaSync };
 
   while (true) {
-    const res = await get('/entities/Cliente', { q: query, limit, skip });
+    const res = await get('/entities/Cliente', { q: JSON.stringify(query), limit, skip });
     const items = Array.isArray(res) ? res : (res.results || []);
     clientes.push(...items);
     if (items.length < limit) break;
@@ -782,6 +796,7 @@ module.exports = {
   sincronizarProdutos,
   registrarCliente,
   atualizarCliente,
+  atualizarClienteEndereco,
   sincronizarClientes,
   autenticarPDV,
   sincronizarConfigDesconto,

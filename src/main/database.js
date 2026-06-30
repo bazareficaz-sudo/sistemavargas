@@ -315,6 +315,16 @@ function runMigrations() {
     'ALTER TABLE entregas ADD COLUMN referencia TEXT',
     'ALTER TABLE entregas ADD COLUMN cliente_documento TEXT',
     'ALTER TABLE produtos ADD COLUMN emoji TEXT DEFAULT \'📦\'',
+    'ALTER TABLE clientes ADD COLUMN whatsapp TEXT',
+    'ALTER TABLE clientes ADD COLUMN cep TEXT',
+    'ALTER TABLE clientes ADD COLUMN logradouro TEXT',
+    'ALTER TABLE clientes ADD COLUMN numero TEXT',
+    'ALTER TABLE clientes ADD COLUMN complemento TEXT',
+    'ALTER TABLE clientes ADD COLUMN bairro TEXT',
+    'ALTER TABLE clientes ADD COLUMN cidade TEXT',
+    'ALTER TABLE clientes ADD COLUMN estado TEXT',
+    'ALTER TABLE clientes ADD COLUMN referencia TEXT',
+    'ALTER TABLE clientes ADD COLUMN obs_entrega TEXT',
     'ALTER TABLE produtos ADD COLUMN ncm TEXT',
     'ALTER TABLE produtos ADD COLUMN cfop TEXT DEFAULT \'5102\'',
     'ALTER TABLE produtos ADD COLUMN icms_cst TEXT DEFAULT \'400\'',
@@ -729,20 +739,35 @@ const clientes = {
   upsertBatch(lista) {
     const stmt = db.prepare(`
       INSERT OR REPLACE INTO clientes
-      (id, remote_id, nome, nome_lower, cpf_cnpj, telefone, email, limite_credito, saldo_credito,
-       saldo_devedor, status_credito, permite_carteira, updated_at, synced_at, sync_status)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      (id, remote_id, nome, nome_lower, cpf_cnpj, telefone, whatsapp, email,
+       cep, logradouro, numero, complemento, bairro, cidade, estado, referencia, obs_entrega,
+       limite_credito, saldo_credito, saldo_devedor, status_credito, permite_carteira,
+       updated_at, synced_at, sync_status)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     `);
     const t = db.transaction(items => {
       for (const c of items) {
-        stmt.run(c.local_id || uuidv4(), c.id, c.nome, c.nome?.toLowerCase(),
-          c.cpf_cnpj || null, c.telefone || null, c.email || null,
+        stmt.run(
+          c.local_id || uuidv4(), c.id, c.nome, c.nome?.toLowerCase(),
+          c.cpf_cnpj || null, c.telefone || null, c.whatsapp || null, c.email || null,
+          c.cep || null, c.logradouro || null, c.numero || null, c.complemento || null,
+          c.bairro || null, c.cidade || null, c.estado || null, c.referencia || null, c.obs_entrega || null,
           c.limite_credito || 0, c.saldo_credito || 0,
           c.saldo_devedor || 0, c.status_credito || 'liberado', c.permite_carteira ? 1 : 0,
-          c.updated_at || new Date().toISOString(), new Date().toISOString(), 'synced');
+          c.updated_at || new Date().toISOString(), new Date().toISOString(), 'synced'
+        );
       }
     });
     t(lista);
+  },
+
+  atualizarEndereco(remoteId, dados) {
+    const campos = ['telefone','whatsapp','cep','logradouro','numero','complemento','bairro','cidade','estado','referencia','obs_entrega'];
+    const sets = campos.filter(c => dados[c]).map(c => `${c} = ?`).join(', ');
+    const vals = campos.filter(c => dados[c]).map(c => dados[c]);
+    if (!sets) return;
+    vals.push(remoteId);
+    db.prepare(`UPDATE clientes SET ${sets} WHERE remote_id = ?`).run(...vals);
   }
 };
 

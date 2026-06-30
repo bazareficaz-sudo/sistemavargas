@@ -27,6 +27,8 @@ contextBridge.exposeInMainWorld('pdv', {
     getById: (id) => ipcRenderer.invoke('clientes:getById', id),
     salvar: (c) => ipcRenderer.invoke('clientes:salvar', c),
     credito: (id) => ipcRenderer.invoke('clientes:credito', id),
+    syncForcar: () => ipcRenderer.invoke('clientes:syncForcar'),
+    atualizarEndereco: (remoteId, dados) => ipcRenderer.invoke('clientes:atualizarEndereco', remoteId, dados),
   },
 
   // Vendedores

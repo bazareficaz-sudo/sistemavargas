@@ -943,6 +943,24 @@ const PDV = (() => {
       valor_total_entrega: itens.reduce((s, i) => s + i.total, 0),
     };
 
+    // Atualiza endereço no cadastro do cliente (em background, sem bloquear)
+    const remoteId = selectedClient?.remote_id || selectedClient?.id;
+    if (remoteId) {
+      window.pdv.clientes.atualizarEndereco(remoteId, {
+        telefone:    dadosEntrega.cliente_telefone || null,
+        whatsapp:    dadosEntrega.cliente_whatsapp || null,
+        cep:         dadosEntrega.cep || null,
+        logradouro:  dadosEntrega.logradouro || null,
+        numero:      dadosEntrega.numero || null,
+        complemento: dadosEntrega.complemento || null,
+        bairro:      dadosEntrega.bairro || null,
+        cidade:      dadosEntrega.cidade || null,
+        estado:      dadosEntrega.estado || null,
+        referencia:  dadosEntrega.referencia || null,
+        obs_entrega: dadosEntrega.observacao || null,
+      }).catch(e => console.warn('[ENTREGA] Erro ao atualizar cliente:', e.message));
+    }
+
     // Entrega confirmada → seguir para pagamento
     await abrirPagamento();
   }

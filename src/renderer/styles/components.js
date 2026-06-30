@@ -587,6 +587,7 @@ const Clientes = {
   <div><div class="page-title">Clientes</div></div>
   <div class="page-actions">
     <input class="input" id="cli-search" placeholder="🔍 Buscar..." style="width:220px" oninput="Clientes.load(this.value)">
+    <button class="btn btn-ghost" id="btn-sync-clientes" onclick="Clientes.syncForcar()" title="Buscar todos os clientes do sistema">↻ Sincronizar</button>
     <button class="btn btn-primary" onclick="Clientes.openForm()">+ Novo Cliente</button>
   </div>
 </div>
@@ -604,6 +605,21 @@ const Clientes = {
   },
 
   async init() { await this.load(''); },
+
+  async syncForcar() {
+    const btn = document.getElementById('btn-sync-clientes');
+    if (btn) { btn.disabled = true; btn.textContent = '↻ Sincronizando...'; }
+    try {
+      const res = await window.pdv.clientes.syncForcar();
+      if (res?.erro) { Toast.show('Erro: ' + res.erro, 'error'); }
+      else { Toast.show(`${res?.total || 0} clientes sincronizados`, 'success'); }
+      await this.load(document.getElementById('cli-search')?.value || '');
+    } catch(e) {
+      Toast.show('Erro ao sincronizar: ' + e.message, 'error');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '↻ Sincronizar'; }
+    }
+  },
 
   async load(q) {
     const lista = await window.pdv.clientes.buscar(q);
