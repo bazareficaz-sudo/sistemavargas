@@ -403,6 +403,12 @@ function runMigrations() {
     )`,
     'CREATE INDEX IF NOT EXISTS idx_mkt_pedidos_conta ON marketplace_pedidos(conta_id)',
     'CREATE INDEX IF NOT EXISTS idx_mkt_pedidos_base44 ON marketplace_pedidos(base44_status)',
+    'ALTER TABLE vendas ADD COLUMN nfce_emitida INTEGER DEFAULT 0',
+    'ALTER TABLE vendas ADD COLUMN nfce_chave TEXT',
+    'ALTER TABLE vendas ADD COLUMN nfce_numero TEXT',
+    'ALTER TABLE vendas ADD COLUMN nfce_serie TEXT',
+    'ALTER TABLE vendas ADD COLUMN nfce_url_pdf TEXT',
+    'ALTER TABLE vendas ADD COLUMN nfce_referencia TEXT',
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch { /* coluna já existe */ }
@@ -1185,6 +1191,26 @@ const vendas = {
       FROM vendas
       WHERE created_at LIKE ? AND status != 'cancelada'
     `).get(`${hoje}%`);
+  },
+
+  atualizarNfce(id, dados) {
+    db.prepare(`
+      UPDATE vendas SET
+        nfce_emitida = 1,
+        nfce_chave = ?,
+        nfce_numero = ?,
+        nfce_serie = ?,
+        nfce_url_pdf = ?,
+        nfce_referencia = ?
+      WHERE id = ?
+    `).run(
+      dados.chave || null,
+      dados.numero ? String(dados.numero) : null,
+      dados.serie ? String(dados.serie) : null,
+      dados.url_pdf || null,
+      dados.referencia || null,
+      id
+    );
   }
 };
 

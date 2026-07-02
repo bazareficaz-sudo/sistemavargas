@@ -54,6 +54,7 @@ contextBridge.exposeInMainWorld('pdv', {
     getById: (id) => ipcRenderer.invoke('vendas:getById', id),
     cancelar: (id, motivo) => ipcRenderer.invoke('vendas:cancelar', id, motivo),
     editar:   (id, itens, dados) => ipcRenderer.invoke('vendas:editar', id, itens, dados),
+    atualizarNfce: (id, dados) => ipcRenderer.invoke('vendas:atualizarNfce', id, dados),
     totaisHoje: () => ipcRenderer.invoke('vendas:totaisHoje'),
     listarCloud: (data) => ipcRenderer.invoke('vendas:listarCloud', data),
   },
@@ -136,10 +137,11 @@ contextBridge.exposeInMainWorld('pdv', {
 
   // NFC-e
   nfce: {
-    emitir:   (venda)               => ipcRenderer.invoke('nfce:emitir', venda),
-    consultar:(reference)           => ipcRenderer.invoke('nfce:consultar', reference),
-    cancelar: (reference, just)     => ipcRenderer.invoke('nfce:cancelar', reference, just),
-    danfe:    (reference)           => ipcRenderer.invoke('nfce:danfe', reference),
+    emitir:          (venda)           => ipcRenderer.invoke('nfce:emitir', venda),
+    consultar:       (reference)       => ipcRenderer.invoke('nfce:consultar', reference),
+    cancelar:        (reference, just) => ipcRenderer.invoke('nfce:cancelar', reference, just),
+    danfe:           (reference)       => ipcRenderer.invoke('nfce:danfe', reference),
+    registrarBase44: (remoteId, dados) => ipcRenderer.invoke('nfce:registrarBase44', remoteId, dados),
   },
 
   // IA

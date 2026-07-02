@@ -18,9 +18,18 @@ function getBaseUrl() {
 }
 
 function getToken() {
-  // Token da empresa fiscal (Base44) tem prioridade sobre o configurado manualmente
-  const usuario = store.get('auth.usuario') || {};
-  return usuario.empresa_fiscal_token_focusnfe || store.get('config.fiscal_token') || '';
+  const ambiente = store.get('config.fiscal_ambiente') || 'homologacao';
+  const usuario  = store.get('auth.usuario') || {};
+  if (ambiente === 'producao') {
+    // Token de produção: campo dedicado no Base44 ou config local
+    return usuario.empresa_fiscal_token_focusnfe_producao
+        || store.get('config.fiscal_token_producao')
+        || '';
+  }
+  // Token de homologação
+  return usuario.empresa_fiscal_token_focusnfe
+      || store.get('config.fiscal_token')
+      || '';
 }
 
 function authHeader(token) {
@@ -51,8 +60,14 @@ function montarPayload(venda) {
   const idToken    = usuario.nfce_id_token              || null;
   const serie      = usuario.nfce_serie                 || '001';
 
-  // Identificação
-  const now = new Date().toISOString().slice(0, 19) + '-03:00';
+  // Identificação — data/hora local com offset do fuso do sistema
+  const _d = new Date();
+  const _off = _d.getTimezoneOffset(); // minutos atrás do UTC (positivo = oeste)
+  const _local = new Date(_d.getTime() - _off * 60000);
+  const _sign = _off <= 0 ? '+' : '-';
+  const _h = String(Math.floor(Math.abs(_off) / 60)).padStart(2, '0');
+  const _m = String(Math.abs(_off) % 60).padStart(2, '0');
+  const now = _local.toISOString().slice(0, 19) + `${_sign}${_h}:${_m}`;
   const reference = `NFCe-${venda.numero || venda.id}`;
 
   // Itens

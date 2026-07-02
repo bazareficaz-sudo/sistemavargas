@@ -18,10 +18,23 @@ let imprimindo = false;
 
 // ─── Geração do HTML do cupom ────────────────────────────────────────────────
 
+// Configurações por layout
+const LAYOUTS = {
+  // Compacto: fonte menor, ideal para 58mm ou quem quer economizar papel
+  compacto: { largura: '72mm', fonteBase: '8pt', fonteSm: '7pt', fonteLg: '11pt', fonteTotal: '11pt', margem: '3mm 2mm' },
+  // Padrão: equilibrado, 72mm
+  padrao:   { largura: '72mm', fonteBase: '9.5pt', fonteSm: '8pt', fonteLg: '13pt', fonteTotal: '12pt', margem: '4mm 3mm' },
+  // Grande: fonte maior, mais fácil de ler
+  grande:   { largura: '72mm', fonteBase: '12pt', fonteSm: '10pt', fonteLg: '16pt', fonteTotal: '15pt', margem: '4mm 3mm' },
+};
+
 function gerarHtmlCupom(dados) {
   const { numero, empresa_nome, vendedor_nome, cliente_nome, itens = [],
           subtotal = 0, desconto = 0, total = 0, forma_pagamento = '',
           valor_pago = 0, troco = 0, created_at } = dados;
+
+  const layoutNome = store.get('config.cupom_layout') || 'padrao';
+  const L = LAYOUTS[layoutNome] || LAYOUTS.padrao;
 
   const fmt = (v) => Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const data = created_at ? new Date(created_at).toLocaleString('pt-BR') : new Date().toLocaleString('pt-BR');
@@ -32,7 +45,7 @@ function gerarHtmlCupom(dados) {
     const sub = Number(i.subtotal || i.total || 0);
     return `
       <tr>
-        <td colspan="2" style="padding-top:4px">${i.produto_nome}</td>
+        <td colspan="2" style="padding-top:5px;font-weight:bold">${i.produto_nome}</td>
       </tr>
       <tr>
         <td style="color:#555">${Math.abs(qtd)} x R$ ${fmt(preco)}</td>
@@ -45,26 +58,25 @@ function gerarHtmlCupom(dados) {
 <head>
 <meta charset="UTF-8">
 <style>
-  @page { size: 72mm auto; margin: 4mm 3mm; }
+  @page { size: ${L.largura} auto; margin: ${L.margem}; }
   * { box-sizing: border-box; }
   body {
     font-family: 'Courier New', Courier, monospace;
-    font-size: 9.5pt;
+    font-size: ${L.fonteBase};
     color: #000;
     background: #fff;
-    width: 72mm;
-    margin: 0;
-    padding: 0;
+    width: ${L.largura};
+    margin: 0; padding: 0;
   }
   .center { text-align: center; }
   .right  { text-align: right; }
   .bold   { font-weight: bold; }
-  .sm     { font-size: 8pt; }
-  .lg     { font-size: 13pt; }
+  .sm     { font-size: ${L.fonteSm}; }
+  .lg     { font-size: ${L.fonteLg}; }
   .sep    { border: none; border-top: 1px dashed #000; margin: 6px 0; }
   table   { width: 100%; border-collapse: collapse; }
   td      { vertical-align: top; padding: 1px 0; }
-  .total-row td { font-size: 12pt; font-weight: bold; padding-top: 6px; }
+  .total-row td { font-size: ${L.fonteTotal}; font-weight: bold; padding-top: 6px; }
 </style>
 </head>
 <body>
@@ -89,14 +101,14 @@ function gerarHtmlCupom(dados) {
     <td>TOTAL</td><td class="right">R$ ${fmt(Math.abs(total))}</td>
   </tr></table>
 
-  <div style="margin-top:6px;font-size:9pt">
+  <div style="margin-top:6px;font-size:${L.fonteSm}">
     Pagamento: <strong>${(forma_pagamento || '').toUpperCase()}</strong>
     ${valor_pago > 0 ? `<br>Recebido: R$ ${fmt(valor_pago)}` : ''}
     ${troco > 0     ? `<br>Troco: R$ ${fmt(troco)}`         : ''}
   </div>
 
   <hr class="sep">
-  <div class="center sm" style="margin-top:4px">Obrigado pela preferência!</div>
+  <div class="center sm" style="margin-top:4px">Obrigado pela preferencia!</div>
 </body>
 </html>`;
 }

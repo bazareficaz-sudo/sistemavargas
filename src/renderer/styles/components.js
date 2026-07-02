@@ -989,7 +989,10 @@ const Vendas = {
             ? `<button class="btn btn-ghost btn-sm" onclick="Vendas.imprimirCloud(${JSON.stringify(v).replace(/"/g,'&quot;')})" title="Imprimir">🖨️</button>`
             : `<button class="btn btn-ghost btn-sm" onclick="Vendas.imprimir('${id}')" title="Imprimir">🖨️</button>
                ${!cancelada && podePermissao('editar_venda') ? `<button class="btn btn-ghost btn-sm" style="color:var(--accent)" onclick="Vendas.editarNoPDV('${id}')">✏️</button>` : ''}
-               ${!cancelada ? `<button class="btn btn-ghost btn-sm" style="color:var(--green);font-size:10px" onclick="Vendas.emitirNFCe('${id}')" title="Emitir NFC-e">🧾 NFC-e</button>` : ''}
+               ${!cancelada && v.nfce_emitida
+                 ? `<span class="badge badge-green" title="NFC-e emitida · Chave: ${v.nfce_chave || ''}">✅ NFC-e</span>
+                    ${v.nfce_url_pdf ? `<button class="btn btn-ghost btn-sm" style="color:var(--green);font-size:10px" onclick="window.open('${v.nfce_url_pdf}','_blank')" title="Ver DANFE">📄 DANFE</button>` : ''}`
+                 : !cancelada ? `<button class="btn btn-ghost btn-sm" style="color:var(--green);font-size:10px" onclick="Vendas.emitirNFCe('${id}')" title="Emitir NFC-e">🧾 NFC-e</button>` : ''}
                ${!cancelada ? `<button class="btn btn-danger btn-sm" onclick="Vendas.cancelar('${id}')">Cancelar</button>` : ''}`}
         </td>
       </tr>`;
@@ -1134,17 +1137,16 @@ const Vendas = {
 
     if (res.ok || res.aguardando) {
       if (res.aguardando) {
-        // Aguardar processamento assíncrono (até 10s)
         Toast.show('Aguardando autorização da SEFAZ...', 'info', 4000);
         await new Promise(r => setTimeout(r, 5000));
         const consulta = await window.pdv.nfce.consultar(res.reference);
         if (consulta.status === 'autorizado') {
-          this._abrirResultadoNFCe(res.reference, consulta);
+          this._abrirResultadoNFCe(res.reference, consulta, venda.remote_id, id);
         } else {
           Toast.show(`Status: ${consulta.status || 'aguardando'} — consulte em instantes`, 'warning', 5000);
         }
       } else {
-        this._abrirResultadoNFCe(res.reference, res.data);
+        this._abrirResultadoNFCe(res.reference, res.data, venda.remote_id, id);
       }
     } else {
       Modal.open(`
@@ -1156,10 +1158,37 @@ const Vendas = {
     }
   },
 
-  _abrirResultadoNFCe(reference, data) {
+  _abrirResultadoNFCe(reference, data, remoteId, localId) {
     const chave = data?.chave_nfe || data?.chave || '—';
     const protocolo = data?.numero_protocolo || data?.protocolo || '—';
     const danfeUrl = data?.danfe_url || data?.url_danfe_nfce || null;
+
+    // Salvar localmente
+    if (localId) {
+      window.pdv.vendas.atualizarNfce(localId, {
+        chave: data?.chave_nfe || data?.chave || '',
+        numero: data?.numero || '',
+        serie: data?.serie || '',
+        url_pdf: danfeUrl || '',
+        referencia: reference,
+      }).catch(() => {});
+    }
+
+    // Sincronizar com Base44 em background
+    if (remoteId) {
+      window.pdv.nfce.registrarBase44(remoteId, {
+        chave:        data?.chave_nfe || data?.chave || '',
+        numero:       data?.numero || '',
+        serie:        data?.serie || '',
+        status:       data?.status || 'autorizado',
+        status_sefaz: data?.status_sefaz || '100',
+        motivo_sefaz: data?.motivo || '',
+        danfe_url:    danfeUrl || '',
+        url_xml:      data?.url_xml || '',
+        referencia:   reference,
+      }).catch(e => console.warn('[NFCe sync Base44]', e.message));
+    }
+
     Modal.open(`
       <div style="padding:16px;text-align:center">
         <div style="font-size:32px;margin-bottom:8px">✅</div>
@@ -1173,7 +1202,7 @@ const Vendas = {
         </div>
         <div class="modal-actions">
           <button class="btn btn-ghost" onclick="Modal.close()">Fechar</button>
-          ${danfeUrl ? `<button class="btn btn-primary" onclick="window.open('${danfeUrl}')">📄 Abrir DANFE</button>` : ''}
+          ${danfeUrl ? `<button class="btn btn-primary" onclick="window.open('${danfeUrl}','_blank')">📄 Abrir DANFE</button>` : ''}
         </div>
       </div>`, 'NFC-e Emitida');
   }
@@ -1860,6 +1889,15 @@ const Config = {
         <div style="font-size:11px;color:var(--text3);margin-top:4px">Selecione a impressora térmica conectada a este terminal</div>
       </div>
       <div id="cfg-print-status" style="font-size:12px;color:var(--text3);margin-bottom:10px"></div>
+      <div class="form-group" style="margin-top:12px">
+        <label class="form-label">Layout do Cupom</label>
+        <select class="input" id="cfg-cupom-layout">
+          <option value="compacto">Compacto (fonte menor, economiza papel)</option>
+          <option value="padrao" selected>Padrão (equilibrado, 72mm)</option>
+          <option value="grande">Grande (fonte maior, mais legível)</option>
+        </select>
+        <div style="font-size:11px;color:var(--text3);margin-top:4px">Define o tamanho da fonte no cupom impresso</div>
+      </div>
     </div>
 
     <!-- Cloudflare Tunnel (visível quando É servidor) -->
@@ -1922,16 +1960,21 @@ const Config = {
       Carregando dados da empresa fiscal...
     </div>
     <div class="form-group">
-      <label class="form-label">Token FocusNFe</label>
-      <input class="input" id="cfg-fiscal-token" type="password" placeholder="Token da API FocusNFe">
-      <div style="font-size:11px;color:var(--text3);margin-top:4px">Informe o token de homologação ou produção do FocusNFe</div>
-    </div>
-    <div class="form-group">
       <label class="form-label">Ambiente</label>
       <select class="input" id="cfg-fiscal-ambiente">
         <option value="homologacao">Homologação (testes)</option>
         <option value="producao">Produção</option>
       </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Token Homologação</label>
+      <input class="input" id="cfg-fiscal-token" type="password" placeholder="Token de testes do FocusNFe">
+      <div style="font-size:11px;color:var(--text3);margin-top:4px">Token do ambiente de testes (homologação)</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Token Produção</label>
+      <input class="input" id="cfg-fiscal-token-producao" type="password" placeholder="Token de produção do FocusNFe">
+      <div style="font-size:11px;color:var(--text3);margin-top:4px">Token do ambiente de produção — diferente do de testes</div>
     </div>
     <button class="btn btn-primary btn-sm" onclick="Config.salvarFiscal()">Salvar configuração fiscal</button>
     <button class="btn btn-ghost btn-sm" style="margin-left:8px" onclick="Config.testarFiscal()">Testar conexão</button>
@@ -1977,6 +2020,9 @@ const Config = {
     const printPorta = await window.pdv.config.get('config.print_server_porta') || 3001;
     const printIp    = await window.pdv.config.get('config.print_server_ip') || '';
     const printAuto  = await window.pdv.config.get('config.imprimir_automatico') === true;
+    const cupomLayout = await window.pdv.config.get('config.cupom_layout') || 'padrao';
+    const selLayout = document.getElementById('cfg-cupom-layout');
+    if (selLayout) selLayout.value = cupomLayout;
     this._setToggle('cfg-print-server', 'cfg-toggle-print', 'cfg-toggle-print-knob', printAtivo);
     this._setToggle('cfg-print-auto', 'cfg-toggle-print-auto', 'cfg-toggle-print-auto-knob', printAuto);
     if (f('cfg-print-porta')) f('cfg-print-porta').value = printPorta;
@@ -2011,9 +2057,10 @@ const Config = {
     const iaStatus = await window.pdv.ia.status();
     this._atualizarBadgeIA(iaStatus.configurado);
 
-    // Fiscal — token manual + ambiente; CNPJ/empresa vêm do login (Base44)
-    if (f('cfg-fiscal-token'))    f('cfg-fiscal-token').value    = await window.pdv.config.get('config.fiscal_token')    || '';
-    if (f('cfg-fiscal-ambiente')) f('cfg-fiscal-ambiente').value = await window.pdv.config.get('config.fiscal_ambiente') || 'homologacao';
+    // Fiscal — tokens por ambiente; CNPJ/empresa vêm do login (Base44)
+    if (f('cfg-fiscal-token'))          f('cfg-fiscal-token').value          = await window.pdv.config.get('config.fiscal_token')          || '';
+    if (f('cfg-fiscal-token-producao')) f('cfg-fiscal-token-producao').value = await window.pdv.config.get('config.fiscal_token_producao') || '';
+    if (f('cfg-fiscal-ambiente'))       f('cfg-fiscal-ambiente').value       = await window.pdv.config.get('config.fiscal_ambiente')       || 'homologacao';
 
     // Painel informativo da empresa fiscal (dados da sessão)
     const user = await window.pdv.config.get('auth.usuario');
@@ -2083,10 +2130,12 @@ const Config = {
   },
 
   async salvarFiscal() {
-    const token   = document.getElementById('cfg-fiscal-token')?.value.trim();
-    const ambiente= document.getElementById('cfg-fiscal-ambiente')?.value;
-    await window.pdv.config.set('config.fiscal_token',   token);
-    await window.pdv.config.set('config.fiscal_ambiente',ambiente);
+    const token         = document.getElementById('cfg-fiscal-token')?.value.trim();
+    const tokenProd     = document.getElementById('cfg-fiscal-token-producao')?.value.trim();
+    const ambiente      = document.getElementById('cfg-fiscal-ambiente')?.value;
+    await window.pdv.config.set('config.fiscal_token',         token);
+    await window.pdv.config.set('config.fiscal_token_producao',tokenProd);
+    await window.pdv.config.set('config.fiscal_ambiente',      ambiente);
     Toast.show('Configuração fiscal salva!', 'success');
   },
 
@@ -2196,12 +2245,14 @@ const Config = {
     const ip    = document.getElementById('cfg-print-ip')?.value.trim() || '';
     const impressora = document.getElementById('cfg-impressora')?.value || '';
     const auto  = document.getElementById('cfg-print-auto')?.checked || false;
+    const layout = document.getElementById('cfg-cupom-layout')?.value || 'padrao';
 
     await window.pdv.config.set('config.print_server_ativo', ativo);
     await window.pdv.config.set('config.print_server_porta', porta);
     await window.pdv.config.set('config.print_server_ip', ip);
     await window.pdv.config.set('config.impressora_nome', impressora);
     await window.pdv.config.set('config.imprimir_automatico', auto);
+    await window.pdv.config.set('config.cupom_layout', layout);
 
     if (ativo) {
       const res = await window.pdv.print.serverStart(porta);

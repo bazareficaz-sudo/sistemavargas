@@ -731,6 +731,20 @@ ipcMain.handle('nfce:danfe', async (_, reference) => {
   }
 });
 
+ipcMain.handle('nfce:registrarBase44', async (_, remoteId, dados) => {
+  try {
+    return await api.registrarNfceVenda(remoteId, dados);
+  } catch (err) {
+    console.warn('[nfce:registrarBase44]', err.message);
+    return { ok: false, erro: err.message };
+  }
+});
+
+ipcMain.handle('vendas:atualizarNfce', (_, id, dados) => {
+  try { db.vendas.atualizarNfce(id, dados); return { ok: true }; }
+  catch (err) { console.warn('[vendas:atualizarNfce]', err.message); return { ok: false }; }
+});
+
 // Atualização
 ipcMain.handle('update:check', () => updater.checarAgora());
 ipcMain.handle('update:install', () => updater.instalarAgora());

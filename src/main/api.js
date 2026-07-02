@@ -468,16 +468,22 @@ async function autenticarPDV(login, senha) {
           usuario.nfce_csc          = cfg.csc_nfce             || null;
           usuario.nfce_id_token     = cfg.id_token_nfce        || null;
           usuario.nfce_habilitada   = cfg.habilita_nfce        || false;
-          // token FocusNFe pode estar em ConfigFiscal também
+          // token FocusNFe homologação
           if (!usuario.empresa_fiscal_token_focusnfe && cfg.token_focusnfe) {
             usuario.empresa_fiscal_token_focusnfe = cfg.token_focusnfe;
+          }
+          // token FocusNFe produção (campo separado no Base44)
+          if (cfg.token_focusnfe_producao) {
+            usuario.empresa_fiscal_token_focusnfe_producao = cfg.token_focusnfe_producao;
           }
         }
       }
 
-      // Salvar token e CNPJ nas configs do terminal para acesso rápido
+      // Salvar tokens e CNPJ nas configs do terminal para acesso rápido
       if (usuario.empresa_fiscal_token_focusnfe)
         store.set('config.fiscal_token', usuario.empresa_fiscal_token_focusnfe);
+      if (usuario.empresa_fiscal_token_focusnfe_producao)
+        store.set('config.fiscal_token_producao', usuario.empresa_fiscal_token_focusnfe_producao);
       if (usuario.empresa_fiscal_cnpj)
         store.set('config.fiscal_cnpj', usuario.empresa_fiscal_cnpj);
       if (usuario.nfce_ambiente)
@@ -827,4 +833,22 @@ module.exports = {
   atualizarSeparacao,
   mapearAnuncioBase44,
   getIdProdutoGenerico,
+  registrarNfceVenda,
 };
+
+// ─── NFC-e — Sincronizar resultado para Base44 ────────────────────────────────
+async function registrarNfceVenda(vendaRemoteId, dados) {
+  if (!vendaRemoteId) throw new Error('vendaRemoteId obrigatório');
+  return put(`/entities/Venda/${vendaRemoteId}`, {
+    nfce_emitida: true,
+    nfce_chave:         dados.chave || '',
+    nfce_numero:        String(dados.numero || ''),
+    nfce_serie:         String(dados.serie || ''),
+    nfce_status:        dados.status || 'autorizado',
+    nfce_status_sefaz:  dados.status_sefaz  ? String(dados.status_sefaz)  : '',
+    nfce_motivo_sefaz:  dados.motivo_sefaz  || '',
+    nfce_url_xml:       dados.url_xml        || '',
+    nfce_url_pdf:       dados.danfe_url || dados.url_danfe_nfce || dados.url_pdf || '',
+    nfce_dados:         dados,
+  });
+}

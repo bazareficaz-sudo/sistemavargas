@@ -8,6 +8,7 @@ const PDV = (() => {
   let vendedorAtual = null; // { id, codigo, nome, comissao }
   let dadosEntrega = null;  // preenchido na etapa "Agendar Entrega"
   let modoEdicao = null;    // { vendaId, numero, remote_id } — null = venda nova
+  let _ultimaVenda = null;  // { numero, remoteId, venda } — usado pelos botões do comprovante
 
   // ─── Render ────────────────────────────────────────────────────
   function render() {
@@ -1116,16 +1117,126 @@ const PDV = (() => {
       }
 
       clearCart();
-      Modal.open(renderComprovante(result.numero, venda), eDevolucao ? 'Comprovante de Devolução' : 'Comprovante');
+      _ultimaVenda = { id: result.id, numero: result.numero, remoteId: result.remote_id || null, venda };
+      Modal.open(renderComprovante(result.numero, venda, result.remote_id), eDevolucao ? 'Comprovante de Devolução' : 'Comprovante');
+      _setupComprovanteKeys();
       _enviarImpressao(result.numero, venda);
     } catch (err) {
       Toast.show('Erro ao registrar: ' + err.message, 'error');
     }
   }
 
-  async function _reimprimir(numero, venda) {
-    await _enviarImpressao(numero, venda);
+  // ─── Atalhos teclado comprovante ──────────────────────────────────────
+  function _setupComprovanteKeys() {
+    function handler(e) {
+      if (!document.getElementById('btn-comprovante-nova')) { document.removeEventListener('keydown', handler, true); return; }
+      const tag = (e.target || {}).tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      const k = e.key;
+      if (k === 'Enter' || k === 'n' || k === 'N') { e.preventDefault(); document.getElementById('btn-comprovante-nova')?.click(); }
+      else if (k === 'p' || k === 'P') { e.preventDefault(); document.getElementById('btn-comprovante-imprimir')?.click(); }
+      else if (k === 'f' || k === 'F') { e.preventDefault(); document.getElementById('btn-comprovante-nfce')?.click(); }
+      else if (k === 'Escape') { document.removeEventListener('keydown', handler, true); }
+    }
+    document.addEventListener('keydown', handler, true);
+  }
+
+  // ─── NFC-e Auto-emissão ─────────────────────────────────────────────
+  async function _autoEmitirNFCe(result, venda) {
+    const usuario = await window.pdv.config.get('auth.usuario');
+    if (!usuario?.nfce_habilitada) return;
+
+    Toast.show('Emitindo NFC-e...', 'info', 7000);
+    const vendaParaNFCe = { ...venda, numero: result.numero };
+    const res = await window.pdv.nfce.emitir(vendaParaNFCe);
+
+    if (res.aguardando) {
+      Toast.show('Aguardando autorização SEFAZ...', 'info', 6000);
+      await new Promise(r => setTimeout(r, 5000));
+      const consulta = await window.pdv.nfce.consultar(res.reference);
+      if (consulta.status === 'autorizado') {
+        await _sincNFCeBase44(result.remote_id, res.reference, consulta);
+      } else {
+        Toast.show(`NFC-e: ${consulta.status || 'aguardando'} — verifique nas vendas`, 'warning', 6000);
+      }
+      return;
+    }
+
+    if (res.ok) {
+      await _sincNFCeBase44(result.remote_id, res.reference, res.data);
+    } else {
+      Toast.show(`NFC-e: ${res.erro || 'erro na emissão'}`, 'error', 8000);
+    }
+  }
+
+  async function _sincNFCeBase44(remoteId, reference, data) {
+    const danfeUrl = data?.danfe_url || data?.url_danfe_nfce || null;
+
+    Toast.show(`NFC-e ${data?.numero || ''} Autorizada ✅`, 'success');
+
+    // Atualizar registro local
+    const uv = _ultimaVenda;
+    if (uv?.id) {
+      window.pdv.vendas.atualizarNfce(uv.id, {
+        chave: data?.chave_nfe || data?.chave || '',
+        numero: data?.numero || '',
+        serie: data?.serie || '',
+        url_pdf: danfeUrl || '',
+        referencia: reference,
+      }).catch(() => {});
+    }
+
+    if (remoteId) {
+      window.pdv.nfce.registrarBase44(remoteId, {
+        chave:       data?.chave_nfe || data?.chave || '',
+        numero:      data?.numero || '',
+        serie:       data?.serie || '',
+        status:      data?.status || 'autorizado',
+        status_sefaz: data?.status_sefaz || '100',
+        motivo_sefaz: data?.motivo || data?.motivo_sefaz || '',
+        danfe_url:   danfeUrl || '',
+        url_xml:     data?.url_xml || '',
+        referencia:  reference,
+      }).catch(e => console.warn('[NFCe sync Base44]', e.message));
+    }
+
+    if (danfeUrl) {
+      window.open(danfeUrl, '_blank');
+    }
+  }
+
+  async function _reimprimir(numero) {
+    const uv = _ultimaVenda;
+    if (!uv) return;
+    await _enviarImpressao(uv.numero, uv.venda);
     Toast.show('Enviado para impressão', 'success');
+  }
+
+  async function _emitirNFCeComprovante() {
+    const uv = _ultimaVenda;
+    if (!uv) { Toast.show('Nenhuma venda ativa', 'warning'); return; }
+
+    Toast.show('Emitindo NFC-e...', 'info', 7000);
+    const vendaParaNFCe = { ...uv.venda, numero: uv.numero };
+    const res = await window.pdv.nfce.emitir(vendaParaNFCe);
+
+    if (res.aguardando) {
+      Toast.show('Aguardando autorização SEFAZ...', 'info', 6000);
+      await new Promise(r => setTimeout(r, 5000));
+      const consulta = await window.pdv.nfce.consultar(res.reference);
+      if (consulta.status === 'autorizado') {
+        await _sincNFCeBase44(uv.remoteId, res.reference, consulta);
+      } else {
+        Toast.show(`NFC-e: ${consulta.status || 'aguardando'} — verifique em instantes`, 'warning', 6000);
+      }
+      return;
+    }
+
+    if (res.ok) {
+      await _sincNFCeBase44(uv.remoteId, res.reference, res.data);
+    } else {
+      Toast.show(`NFC-e: ${res.erro || 'erro na emissão'}`, 'error', 8000);
+    }
   }
 
   async function _enviarImpressao(numero, venda) {
@@ -1222,9 +1333,19 @@ const PDV = (() => {
   ${venda.troco > 0 ? `<div style="color:var(--green)">Troco: R$ ${fmtMoney(venda.troco)}</div>` : ''}
   ${itensDevol.length && venda.total < 0 ? `<div style="color:var(--green);font-size:12px">Crédito na carteira: R$ ${fmtMoney(Math.abs(venda.total))}</div>` : ''}
 </div>
-<div class="modal-actions">
-  <button class="btn btn-ghost" onclick="PDV._reimprimir(${numero}, ${JSON.stringify(venda).replace(/'/g, '&#39;')})">🖨️ Reimprimir</button>
-  <button class="btn btn-primary" onclick="Modal.close()">Fechar</button>
+<div class="modal-actions" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:16px">
+  <button id="btn-comprovante-nova" class="btn btn-primary btn-lg" onclick="Modal.close()" style="grid-column:1/-1;font-size:15px">
+    🛒 Nova Venda <span style="font-size:11px;opacity:.7;font-weight:400">[Enter]</span>
+  </button>
+  <button id="btn-comprovante-imprimir" class="btn btn-ghost" onclick="PDV._reimprimir(${numero})">
+    🖨️ Imprimir <span style="font-size:10px;opacity:.6">[P]</span>
+  </button>
+  <button id="btn-comprovante-nfce" class="btn btn-ghost" onclick="PDV._emitirNFCeComprovante()">
+    📄 Emitir NFC-e <span style="font-size:10px;opacity:.6">[F]</span>
+  </button>
+  <button id="btn-comprovante-fechar" class="btn btn-ghost" style="font-size:11px;color:var(--text3)" onclick="Modal.close()">
+    Fechar <span style="font-size:10px;opacity:.6">[ESC]</span>
+  </button>
 </div>`;
   }
 
@@ -1584,6 +1705,6 @@ const PDV = (() => {
     _abrirModalVendedor, _validarVendedor, _finalizarComVendedor, _vendedorAtualValido,
     openClientSearch, searchClientes, selectClient, clearClient,
     _abrirNovoCliente, _salvarNovoCliente,
-    _reimprimir, _enviarImpressao,
+    _reimprimir, _enviarImpressao, _emitirNFCeComprovante,
     verContaCliente, _receberCredito };
 })();
